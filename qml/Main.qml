@@ -83,9 +83,20 @@ Item {
             color: root.pal.signal
         }
 
-        Text {
+        Image {
+            id: brand
             anchors.left: parent.left
-            anchors.leftMargin: 20
+            anchors.leftMargin: 16
+            anchors.verticalCenter: parent.verticalCenter
+            width: 42
+            height: 42
+            source: "logo.png"
+            fillMode: Image.PreserveAspectFit
+        }
+
+        Text {
+            anchors.left: brand.right
+            anchors.leftMargin: 8
             anchors.verticalCenter: parent.verticalCenter
             text: "LOGOS SKI"
             color: root.pal.ink
