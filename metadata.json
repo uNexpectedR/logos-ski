@@ -1,0 +1,23 @@
+{
+  "name": "logos_ski",
+  "display_name": "Logos Ski",
+  "version": "1.0.0",
+  "type": "ui_qml",
+  "category": "game",
+  "description": "Downhill ski run through Logos lambda marks.",
+  "view": "qml/Main.qml",
+  "dependencies": [],
+  "nix": {
+    "packages": {
+      "build": [],
+      "runtime": []
+    },
+    "external_libraries": [],
+    "cmake": {
+      "find_packages": [],
+      "extra_sources": [],
+      "extra_include_dirs": [],
+      "extra_link_libraries": []
+    }
+  }
+}
