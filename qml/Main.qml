@@ -44,11 +44,20 @@ Item {
         onTriggered: root.tick()
     }
 
+    Image {
+        id: mark
+        source: "lambda.png"
+        asynchronous: false
+        visible: false
+        onStatusChanged: canvas.requestPaint()
+    }
+
     Canvas {
         id: canvas
         anchors.fill: parent
         antialiasing: true
-        onPaint: Draw.paint(getContext("2d"), root.state, width, height)
+        onPaint: Draw.paint(getContext("2d"), root.state, width, height,
+                            mark.status === Image.Ready ? mark : null)
     }
 
     MouseArea {
@@ -143,8 +152,8 @@ Item {
         Text {
             anchors.centerIn: parent
             text: root.activeFocus
-                  ? "left / right steer    up slow    down fast    R restart    T early chase"
-                  : "click the slope to ski"
+                  ? "the government will chase you    left / right steer    up slow    down fast    R restart"
+                  : "click the slope to ski    the government will chase you"
             color: root.pal.paper
             font.pixelSize: 13
             font.family: "monospace"
@@ -246,21 +255,21 @@ Item {
     }
 
     function syncHud() {
-        distanceLabel = Game.score(state) + " m"
+        distanceLabel = Game.score(state) + " pts"
         speedLabel = Math.floor(state.speed) + ""
         if (state.mode === "caught") {
             statusLabel = "caught"
             showCaught = true
-            var who = state.caughtBy === "ops" ? "Special Ops" : "the policeman"
-            caughtTitle = "CAUGHT\n" + who + "\n" + Game.score(state) + " m\nR restart"
+            var who = state.caughtBy === "ops" ? "Special Ops" : "the government"
+            caughtTitle = "CAUGHT\n" + who + "\n" + Game.score(state) + " pts\nR restart"
         } else if (state.mode === "crash") {
             statusLabel = "wiped out"
             showCaught = false
         } else if (state.ops) {
             statusLabel = "special ops"
             showCaught = false
-        } else if (state.police) {
-            statusLabel = "policeman"
+        } else if (state.agent) {
+            statusLabel = "government"
             showCaught = false
         } else {
             statusLabel = "skiing"
@@ -271,7 +280,7 @@ Item {
         if (!list.length) lines.push("—")
         var i
         for (i = 0; i < list.length && i < 10; i++) {
-            lines.push((i + 1) + "  " + list[i] + " m")
+            lines.push((i + 1) + "  " + list[i])
         }
         topLabel = lines.join("\n")
     }

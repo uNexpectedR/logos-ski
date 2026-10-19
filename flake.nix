@@ -1,5 +1,5 @@
 {
-  description = "Logos Ski — a downhill run for Logos Basecamp";
+  description = "Logos Ski — downhill run. The government will chase you.";
 
   inputs = {
     logos-module-builder.url = "github:logos-co/logos-module-builder";

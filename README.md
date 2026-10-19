@@ -1,6 +1,6 @@
 # Logos Ski
 
-A downhill ski run for Logos Basecamp. Steer between Logos lambda marks. A blue policeman picks up the chase, then a larger Special Ops officer.
+A downhill ski run for Logos Basecamp. Trees on the slope wipe you out. Lambda marks are bonuses: a small one is worth some points, and a big one is worth several times more. The government will chase you, then a bigger Special Ops figure.
 
 Scores are a local top ten on this machine. They stay available offline. There is no networked leaderboard.
 
@@ -11,9 +11,9 @@ Scores are a local top ten on this machine. They stay available offline. There i
 - Down — speed up
 - R — restart and keep the local top ten
 - Click the slope if the keys do not respond
-- T — test hook: bring the policeman in immediately, then Special Ops on the next press
+- T — test hook: the government starts the chase immediately, then Special Ops on the next press
 
-Hitting a lambda wipes you out. You get back up. If a chaser reaches you, the run ends.
+Hitting a tree wipes you out. You get back up. Collecting a lambda adds points and shows them on the slope. If a chaser reaches you, the run ends.
 
 ## Install in Basecamp
 
@@ -31,4 +31,4 @@ Package Manager then lists **Logos Ski**. Install it and load it from Apps Inspe
 nix run
 ```
 
-That launches this module in logos-standalone-app.
+That launches this module in the Logos Basecamp standalone app.

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "logos-ski",
   "displayName": "Logos Ski",
-  "description": "A downhill ski run for Logos Basecamp.",
+  "description": "Downhill ski run. The government will chase you.",
   "homepage": "https://github.com/uNexpectedR/logos-ski",
   "indexUrl": "https://raw.githubusercontent.com/uNexpectedR/logos-ski/main/index.json",
   "trustedSigners": [

@@ -1,20 +1,35 @@
 .import "palette.js" as Palette
 
-function paint(ctx, state, w, h) {
+function paint(ctx, state, w, h, mark) {
     var pal = Palette.tokens()
     drawSlope(ctx, state, w, h, pal)
     var marks = []
     var i
     for (i = 0; i < state.obstacles.length; i++) {
-        var o = state.obstacles[i]
-        marks.push({ sy: screenY(state, o.y), kind: o.kind, x: o.x, y: screenY(state, o.y) })
-    }
-    if (state.police) {
+        var tree = state.obstacles[i]
         marks.push({
-            sy: screenY(state, state.police.y),
-            kind: "police",
-            x: state.police.x,
-            y: screenY(state, state.police.y)
+            sy: screenY(state, tree.y),
+            kind: "tree",
+            x: tree.x,
+            y: screenY(state, tree.y),
+            scale: tree.scale || 1
+        })
+    }
+    for (i = 0; i < state.bonuses.length; i++) {
+        var bonus = state.bonuses[i]
+        marks.push({
+            sy: screenY(state, bonus.y),
+            kind: bonus.kind,
+            x: bonus.x,
+            y: screenY(state, bonus.y)
+        })
+    }
+    if (state.agent) {
+        marks.push({
+            sy: screenY(state, state.agent.y),
+            kind: "agent",
+            x: state.agent.x,
+            y: screenY(state, state.agent.y)
         })
     }
     if (state.ops) {
@@ -32,11 +47,12 @@ function paint(ctx, state, w, h) {
             drawSkier(ctx, state, pal)
             skierDrawn = true
         }
-        drawMark(ctx, marks[i], pal)
+        drawMark(ctx, marks[i], pal, mark)
     }
     if (!skierDrawn) drawSkier(ctx, state, pal)
-    if (state.police) drawIncoming(ctx, state, state.police, false, pal)
+    if (state.agent) drawIncoming(ctx, state, state.agent, false, pal)
     if (state.ops) drawIncoming(ctx, state, state.ops, true, pal)
+    drawFloaters(ctx, state, pal)
     if (state.mode === "caught") {
         ctx.fillStyle = pal.ink
         ctx.globalAlpha = 0.38
@@ -89,44 +105,76 @@ function drawSlope(ctx, state, w, h, pal) {
     }
 }
 
-function drawMark(ctx, mark, pal) {
-    if (mark.y < -90 || mark.y > 4000) return
-    if (mark.kind === "small" || mark.kind === "big") drawLambda(ctx, mark.x, mark.y, mark.kind === "big", pal)
-    else if (mark.kind === "police") drawOfficer(ctx, mark.x, mark.y, false, pal)
-    else if (mark.kind === "ops") drawOfficer(ctx, mark.x, mark.y, true, pal)
+function drawMark(ctx, mark, pal, image) {
+    if (mark.y < -120 || mark.y > 4000) return
+    if (mark.kind === "tree") drawTree(ctx, mark.x, mark.y, mark.scale, pal)
+    else if (mark.kind === "small" || mark.kind === "big") drawBonus(ctx, image, mark.x, mark.y, mark.kind === "big")
+    else if (mark.kind === "agent") drawChaser(ctx, mark.x, mark.y, false, pal)
+    else if (mark.kind === "ops") drawChaser(ctx, mark.x, mark.y, true, pal)
 }
 
-function drawLambda(ctx, x, y, big, pal) {
-    var w = big ? 34 : 16
-    var h = big ? 46 : 22
+function drawTree(ctx, x, y, scale, pal) {
+    var s = scale || 1
     ctx.save()
     ctx.translate(x, y)
-    ctx.lineCap = "round"
-    ctx.lineJoin = "round"
-    ctx.strokeStyle = pal.steel
-    ctx.globalAlpha = 0.45
-    ctx.lineWidth = big ? 8 : 4
-    traceLambda(ctx, w, h, 3, 4)
-    ctx.stroke()
+    ctx.scale(s, s)
+    ctx.fillStyle = pal.ink
+    ctx.globalAlpha = 0.14
+    ctx.beginPath()
+    ctx.arc(2, 16, 14, 0, Math.PI * 2)
+    ctx.fill()
     ctx.globalAlpha = 1
-    if (big) {
-        ctx.strokeStyle = pal.signal
-        ctx.lineWidth = 10
-        traceLambda(ctx, w, h, 0, 0)
-        ctx.stroke()
-    }
-    ctx.strokeStyle = pal.ink
-    ctx.lineWidth = big ? 4 : 3
-    traceLambda(ctx, w, h, 0, 0)
-    ctx.stroke()
+    ctx.fillStyle = pal.ink
+    ctx.fillRect(-4, -6, 8, 18)
+    ctx.fillStyle = pal.pine
+    ctx.beginPath()
+    ctx.moveTo(0, -52)
+    ctx.lineTo(18, -16)
+    ctx.lineTo(-18, -16)
+    ctx.fill()
+    ctx.beginPath()
+    ctx.moveTo(0, -36)
+    ctx.lineTo(24, 0)
+    ctx.lineTo(-24, 0)
+    ctx.fill()
+    ctx.fillStyle = pal.ink
+    ctx.globalAlpha = 0.18
+    ctx.beginPath()
+    ctx.moveTo(0, -48)
+    ctx.lineTo(8, -18)
+    ctx.lineTo(0, -22)
+    ctx.fill()
+    ctx.globalAlpha = 1
     ctx.restore()
 }
 
-function traceLambda(ctx, w, h, dx, dy) {
+function drawBonus(ctx, image, x, y, big) {
+    var s = big ? 92 : 40
+    if (!image) return
+    ctx.save()
+    ctx.globalAlpha = 0.2
+    ctx.fillStyle = "#152521"
     ctx.beginPath()
-    ctx.moveTo(-w + dx, -h * 0.42 + dy)
-    ctx.lineTo(dx, h * 0.5 + dy)
-    ctx.lineTo(w + dx, -h * 0.42 + dy)
+    ctx.arc(x + 3, y + s * 0.42, s * 0.28, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = 1
+    ctx.drawImage(image, x - s / 2, y - s / 2, s, s)
+    ctx.restore()
+}
+
+function drawFloaters(ctx, state, pal) {
+    var i
+    for (i = 0; i < state.floaters.length; i++) {
+        var f = state.floaters[i]
+        var sy = screenY(state, f.y) - (1.15 - f.life) * 42
+        ctx.globalAlpha = f.life > 1 ? 1 : Math.max(0, f.life)
+        ctx.font = "bold 22px monospace"
+        ctx.fillStyle = pal.ink
+        ctx.fillText(f.text, f.x + 2, sy + 2)
+        ctx.fillStyle = pal.signal
+        ctx.fillText(f.text, f.x, sy)
+        ctx.globalAlpha = 1
+    }
 }
 
 function drawSkier(ctx, state, pal) {
@@ -183,7 +231,7 @@ function drawSkier(ctx, state, pal) {
     ctx.restore()
 }
 
-function drawOfficer(ctx, x, y, special, pal) {
+function drawChaser(ctx, x, y, special, pal) {
     ctx.save()
     ctx.translate(x, y)
     if (special) ctx.scale(1.7, 1.7)
@@ -197,7 +245,7 @@ function drawOfficer(ctx, x, y, special, pal) {
         ctx.fillStyle = pal.ops
         ctx.fillRect(-7, -6, 8, 12)
     }
-    ctx.fillStyle = special ? pal.opsBlue : pal.police
+    ctx.fillStyle = special ? pal.opsBlue : pal.blue
     ctx.fillRect(-7, 2, 5, 14)
     ctx.fillRect(2, 2, 5, 14)
     if (special) {
@@ -208,7 +256,7 @@ function drawOfficer(ctx, x, y, special, pal) {
     ctx.fillStyle = pal.boot
     ctx.fillRect(-8, 16, 7, 4)
     ctx.fillRect(1, 16, 7, 4)
-    ctx.fillStyle = special ? pal.opsBlue : pal.police
+    ctx.fillStyle = special ? pal.opsBlue : pal.blue
     ctx.fillRect(-11, -16, 22, 20)
     if (special) {
         ctx.fillStyle = pal.ops
@@ -227,7 +275,7 @@ function drawOfficer(ctx, x, y, special, pal) {
         ctx.fillStyle = pal.paper
         ctx.fillRect(4, -7, 2, 2)
     }
-    ctx.strokeStyle = special ? pal.ops : pal.police
+    ctx.strokeStyle = special ? pal.ops : pal.blue
     ctx.lineWidth = 3
     ctx.lineCap = "round"
     ctx.beginPath()
@@ -251,12 +299,12 @@ function drawOfficer(ctx, x, y, special, pal) {
         ctx.fillStyle = pal.ink
         ctx.fillRect(-4, -22, 8, 2)
     } else {
-        ctx.fillStyle = pal.policeDark
+        ctx.fillStyle = pal.blueDark
         ctx.beginPath()
         ctx.arc(0, -28, 8, Math.PI, 0)
         ctx.fill()
         ctx.fillRect(-11, -28, 22, 3)
-        ctx.fillStyle = pal.police
+        ctx.fillStyle = pal.blue
         ctx.fillRect(-12, -26, 24, 3)
     }
     ctx.restore()
@@ -265,7 +313,7 @@ function drawOfficer(ctx, x, y, special, pal) {
 function drawIncoming(ctx, state, ch, special, pal) {
     var sy = screenY(state, ch.y)
     if (sy >= 14) return
-    ctx.fillStyle = special ? pal.ops : pal.police
+    ctx.fillStyle = special ? pal.ops : pal.blue
     var width = special ? 22 : 12
     ctx.fillRect(ch.x - width / 2, 10, width, 5)
 }

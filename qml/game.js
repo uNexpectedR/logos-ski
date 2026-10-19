@@ -1,3 +1,6 @@
+var SMALL_PTS = 100
+var BIG_PTS = 500
+
 function createState() {
     return {
         width: 960,
@@ -8,15 +11,18 @@ function createState() {
         speed: 150,
         travel: 0,
         distance: 0,
+        bonus: 0,
         mode: "ski",
         crashT: 0,
         tumble: 0,
         invuln: 0,
         obstacles: [],
+        bonuses: [],
+        floaters: [],
         spawnAt: -999,
-        police: null,
+        agent: null,
         ops: null,
-        policeAt: 450,
+        agentAt: 450,
         specialAt: 1400,
         fast: false,
         top: [],
@@ -29,14 +35,15 @@ function createState() {
 
 function score(state) {
     var meters = Math.floor(state.distance)
-    if (meters < 0) return 0
-    return meters
+    if (meters < 0) meters = 0
+    return meters + state.bonus
 }
 
 function step(state, dt, input) {
     if (!state.placed) return
     if (dt > 0.05) dt = 0.05
     if (dt < 0) dt = 0
+    fadeFloaters(state, dt)
     if (state.mode === "caught") return
     if (state.invuln > 0) state.invuln -= dt
     if (state.mode === "crash") {
@@ -83,36 +90,49 @@ function steer(state, dt, input) {
 }
 
 function spawn(state) {
-    var gap = state.fast ? 130 : 220
+    var gap = state.fast ? 120 : 200
     if (state.travel - state.spawnAt < gap) return
     state.spawnAt = state.travel
-    var big = Math.random() < 0.24
     var margin = 70
     var span = state.width - margin * 2
     if (span < 40) span = 40
     state.obstacles.push({
         x: margin + Math.random() * span,
         y: state.travel + state.height * 0.92,
-        kind: big ? "big" : "small"
+        kind: "tree",
+        scale: 0.85 + Math.random() * 0.45
     })
+    if (Math.random() < 0.42) {
+        var big = Math.random() < 0.28
+        state.bonuses.push({
+            x: margin + Math.random() * span,
+            y: state.travel + state.height * 0.78,
+            kind: big ? "big" : "small"
+        })
+    }
 }
 
 function cull(state) {
+    var limit = state.travel - 420
     var next = []
-    var limit = state.travel - 360
     var i
     for (i = 0; i < state.obstacles.length; i++) {
         if (state.obstacles[i].y > limit) next.push(state.obstacles[i])
     }
     state.obstacles = next
+    next = []
+    for (i = 0; i < state.bonuses.length; i++) {
+        if (state.bonuses[i].y > limit) next.push(state.bonuses[i])
+    }
+    state.bonuses = next
 }
 
 function chase(state, dt) {
-    if (!state.police && state.distance >= state.policeAt) {
-        state.police = {
+    if (!state.agent && state.distance >= state.agentAt) {
+        state.agent = {
             x: state.skierX,
             y: state.travel - 340,
-            kind: "police"
+            kind: "agent"
         }
     }
     if (!state.ops && state.distance >= state.specialAt) {
@@ -122,7 +142,7 @@ function chase(state, dt) {
             kind: "ops"
         }
     }
-    if (state.police) moveChaser(state, state.police, dt, 170, 48)
+    if (state.agent) moveChaser(state, state.agent, dt, 170, 48)
     if (state.ops) moveChaser(state, state.ops, dt, 320, 110)
 }
 
@@ -144,9 +164,9 @@ function collide(state) {
     if (state.mode !== "ski" || state.invuln > 0) return
     var i
     for (i = state.obstacles.length - 1; i >= 0; i--) {
-        var o = state.obstacles[i]
-        var rad = o.kind === "big" ? 40 : 18
-        if (hits(state.skierX, state.travel, o.x, o.y, rad + 12)) {
+        var tree = state.obstacles[i]
+        var rad = 22 * (tree.scale || 1)
+        if (hits(state.skierX, state.travel, tree.x, tree.y, rad + 10)) {
             state.obstacles.splice(i, 1)
             state.mode = "crash"
             state.crashT = 0
@@ -155,13 +175,42 @@ function collide(state) {
             return
         }
     }
-    if (state.police && hits(state.skierX, state.travel, state.police.x, state.police.y, 26)) {
-        finish(state, "police")
+    for (i = state.bonuses.length - 1; i >= 0; i--) {
+        var bonus = state.bonuses[i]
+        var reach = bonus.kind === "big" ? 42 : 22
+        if (hits(state.skierX, state.travel, bonus.x, bonus.y, reach)) {
+            collect(state, bonus)
+            state.bonuses.splice(i, 1)
+        }
+    }
+    if (state.agent && hits(state.skierX, state.travel, state.agent.x, state.agent.y, 26)) {
+        finish(state, "agent")
         return
     }
     if (state.ops && hits(state.skierX, state.travel, state.ops.x, state.ops.y, 40)) {
         finish(state, "ops")
     }
+}
+
+function collect(state, bonus) {
+    var pts = bonus.kind === "big" ? BIG_PTS : SMALL_PTS
+    state.bonus += pts
+    state.floaters.push({
+        x: bonus.x,
+        y: bonus.y,
+        text: "+" + pts,
+        life: 1.15
+    })
+}
+
+function fadeFloaters(state, dt) {
+    var next = []
+    var i
+    for (i = 0; i < state.floaters.length; i++) {
+        state.floaters[i].life -= dt
+        if (state.floaters[i].life > 0) next.push(state.floaters[i])
+    }
+    state.floaters = next
 }
 
 function hits(ax, ay, bx, by, r) {
@@ -206,7 +255,7 @@ function restart(state) {
     next.placed = true
     next.fast = fast
     if (fast) {
-        next.policeAt = 35
+        next.agentAt = 35
         next.specialAt = 90
     }
     prime(next)
@@ -216,9 +265,9 @@ function restart(state) {
 function armFast(state) {
     if (state.mode === "caught") return
     state.fast = true
-    state.policeAt = 35
+    state.agentAt = 35
     state.specialAt = 90
-    var target = state.police ? state.specialAt : state.policeAt
+    var target = state.agent ? state.specialAt : state.agentAt
     if (state.distance < target) {
         state.distance = target
         state.travel = target * 8
@@ -227,17 +276,28 @@ function armFast(state) {
 }
 
 function prime(state) {
+    var margin = 90
+    var span = state.width - margin * 2
+    if (span < 40) span = 40
     var i
-    for (i = 0; i < 6; i++) {
-        var margin = 80
-        var span = state.width - margin * 2
-        if (span < 40) span = 40
+    for (i = 0; i < 5; i++) {
         state.obstacles.push({
-            x: margin + Math.random() * span,
-            y: state.travel + 240 + i * 170,
-            kind: i % 4 === 3 ? "big" : "small"
+            x: margin + ((i * 0.37) % 1) * span,
+            y: state.travel + 150 + i * 150,
+            kind: "tree",
+            scale: i % 2 === 0 ? 1.05 : 0.82
         })
     }
+    state.bonuses.push({
+        x: state.width * 0.30,
+        y: state.travel + 230,
+        kind: "small"
+    })
+    state.bonuses.push({
+        x: state.width * 0.68,
+        y: state.travel + 390,
+        kind: "big"
+    })
     state.spawnAt = state.travel
 }
 

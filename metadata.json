@@ -1,10 +1,10 @@
 {
   "name": "logos_ski",
   "display_name": "Logos Ski",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "ui_qml",
   "category": "game",
-  "description": "Downhill ski run through Logos lambda marks.",
+  "description": "Downhill ski run. The government will chase you.",
   "view": "qml/Main.qml",
   "icon": "assets/icon.png",
   "dependencies": [],
