@@ -12,7 +12,6 @@ Scores are a local top ten on this machine. They stay available offline. There i
 - Space — hop
 - R — restart and keep the local top ten
 - Click the slope if the keys do not respond
-- T — test hook: the government starts the chase immediately, then Special Ops on the next press
 
 Hitting a tree on the snow wipes you out. You get back up. Collecting a lambda adds points and shows them on the slope. If a chaser reaches you, the run ends.
 
