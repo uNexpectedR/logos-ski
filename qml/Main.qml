@@ -43,6 +43,14 @@ Item {
     property bool asked: false
     property bool waitingToAsk: false
     property string pendingRequest: ""
+    property string pendingBody: ""
+    property int sendTries: 0
+    property int createTries: 0
+    property int startTries: 0
+    property int subscribeTries: 0
+    property bool nodeCreated: false
+    property string rlnRegistry: "logos:testnet:fd322d32a46ddf57eece9db8d68e9b722262d1f770760fca63b8cb9e7775b971"
+    property string rlnId: "5e269b6a19fce081f5808b13442dcbc3522197638dd38df5a28bc4e55236b977"
     property string downloadCid: ""
     property string downloadBuf: ""
     property string uploadSession: ""
@@ -94,6 +102,34 @@ Item {
         interval: 1200
         repeat: false
         onTriggered: root.uploadBoard()
+    }
+
+    Timer {
+        id: sendRetry
+        interval: 4000
+        repeat: false
+        onTriggered: root.sendPending()
+    }
+
+    Timer {
+        id: createRetry
+        interval: 3000
+        repeat: false
+        onTriggered: root.startDelivery()
+    }
+
+    Timer {
+        id: startRetry
+        interval: 3000
+        repeat: false
+        onTriggered: root.beginStart()
+    }
+
+    Timer {
+        id: subscribeRetry
+        interval: 3000
+        repeat: false
+        onTriggered: root.subscribeTopic()
     }
 
     Connections {
@@ -475,19 +511,48 @@ Item {
         showName = false
         publishing = true
         publishNote = ""
+        pendingBody = body
+        sendTries = 0
         syncHud()
+        sendPending()
+        finishAsk()
+    }
+
+    function sendPending() {
+        if (!pendingBody) return
+        if (!subscribed) {
+            if (deliveryState === "down") {
+                publishing = false
+                publishNote = "score was not published"
+                syncHud()
+                return
+            }
+            sendRetry.restart()
+            return
+        }
+        if (sendTries >= 4) {
+            publishing = false
+            publishNote = "score was not published"
+            boardLog("delivery_module.send gave up")
+            syncHud()
+            return
+        }
+        sendTries = sendTries + 1
+        var body = pendingBody
         callMod("delivery_module", "send", [Board.TOPIC, body], function (res) {
             var parsed = asResult(res)
             if (!parsed.ok) {
-                publishing = false
-                publishNote = "score was not published"
                 boardLog("delivery_module.send failed " + parsed.error)
-                finishAsk()
+                if (sendTries < 4) sendRetry.restart()
+                else {
+                    publishing = false
+                    publishNote = "score was not published"
+                    syncHud()
+                }
                 return
             }
             pendingRequest = parsed.value ? String(parsed.value) : ""
             boardLog("delivery_module.send " + pendingRequest)
-            finishAsk()
         })
     }
 
@@ -615,7 +680,7 @@ Item {
         return s.indexOf("already") >= 0 || s.indexOf("exist") >= 0 || s.indexOf("running") >= 0
     }
 
-    function callMod(moduleName, method, args, done) {
+    function callMod(moduleName, method, args, done, timeoutMs) {
         var api = bridge || logosObject()
         if (!api) {
             done("{\"success\":false,\"error\":\"logos bridge missing\"}")
@@ -624,7 +689,7 @@ Item {
         try {
             api.callModuleAsync(moduleName, method, args, function (payload) {
                 done(payload)
-            }, 20000)
+            }, timeoutMs || 20000)
         } catch (e) {
             done("{\"success\":false,\"error\":\"" + String(e) + "\"}")
         }
@@ -646,6 +711,7 @@ Item {
         arm("delivery_module", "connectionStateChanged")
         arm("delivery_module", "messageError")
         arm("delivery_module", "messageSent")
+        arm("delivery_module", "rlnStateChanged")
         arm("storage_module", "storageStart")
         arm("storage_module", "storageDownloadProgress")
         arm("storage_module", "storageDownloadDone")
@@ -671,38 +737,94 @@ Item {
     }
 
     function startDelivery() {
+        if (deliveryStarted) return
+        if (nodeCreated) {
+            beginStart()
+            return
+        }
+        if (createTries >= 2) return
+        createTries = createTries + 1
         callMod("delivery_module", "createNode",
                 ['{"mode":"Edge","preset":"logos.test"}'], function (payload) {
             var parsed = asResult(payload)
             boardLog("delivery_module.createNode " + (parsed.ok ? "ok" : parsed.error))
-            if (!parsed.ok && !softError(parsed.error)) deliveryFailed = true
-            callMod("delivery_module", "start", [], function (payload2) {
-                var started = asResult(payload2)
-                boardLog("delivery_module.start " + (started.ok ? "ok" : started.error))
-                if (!started.ok && !softError(started.error)) {
-                    deliveryFailed = true
-                    refreshDelivery()
+            if (!parsed.ok && !softError(parsed.error)) {
+                if (createTries < 2) {
+                    boardLog("delivery_module.createNode retry")
+                    createRetry.restart()
                     return
                 }
-                deliveryStarted = true
-                subscribeTopic()
-                pollDelivery()
-            })
+                deliveryFailed = true
+                refreshDelivery()
+                return
+            }
+            nodeCreated = true
+            beginStart()
         })
     }
 
+    function beginStart() {
+        if (deliveryStarted || startTries >= 2) return
+        startTries = startTries + 1
+        callMod("delivery_module", "start", [], function (payload2) {
+            var started = asResult(payload2)
+            boardLog("delivery_module.start " + (started.ok ? "ok" : started.error))
+            if (!started.ok && !softError(started.error)) {
+                if (startTries < 2) {
+                    boardLog("delivery_module.start retry")
+                    startRetry.restart()
+                    return
+                }
+                deliveryFailed = true
+                refreshDelivery()
+                return
+            }
+            deliveryStarted = true
+            subscribeTopic()
+            pollDelivery()
+            readRln()
+        })
+    }
+
+    function readRln() {
+        callMod("delivery_module", "rlnState", [], function (payload) {
+            var parsed = asResult(payload)
+            var state = parsed.ok && parsed.value ? String(parsed.value) : parsed.error
+            boardLog("delivery_module.rlnState " + state)
+            if (state === "Ready") ensureMembership()
+        })
+    }
+
+    function ensureMembership() {
+        callMod("liblogos_rln_module", "get_membership_state", [rlnRegistry, rlnId], function (payload) {
+            var text = typeof payload === "string" ? payload : ""
+            boardLog("liblogos_rln_module.get_membership_state " + text)
+            if (text.indexOf("\"active\"") >= 0 || text.indexOf("\"grace_period\"") >= 0 || text.indexOf("\"pending\"") >= 0) return
+            callMod("liblogos_rln_module", "register_membership", [rlnRegistry, rlnId, "[]"], function (reg) {
+                boardLog("liblogos_rln_module.register_membership " + reg)
+            }, 70000)
+        }, 70000)
+    }
+
     function subscribeTopic() {
-        if (subscribed) return
+        if (subscribed || subscribeTries >= 3) return
+        subscribeTries = subscribeTries + 1
         callMod("delivery_module", "subscribe", [Board.TOPIC], function (payload) {
             var parsed = asResult(payload)
             boardLog("delivery_module.subscribe " + (parsed.ok ? "ok" : parsed.error))
             if (!parsed.ok && !softError(parsed.error)) {
+                if (subscribeTries < 3) {
+                    boardLog("delivery_module.subscribe retry")
+                    subscribeRetry.restart()
+                    return
+                }
                 deliveryFailed = true
                 refreshDelivery()
                 return
             }
             subscribed = true
             refreshDelivery()
+            if (pendingBody) sendPending()
         })
     }
 
@@ -820,15 +942,24 @@ Item {
             noteConnection(asText(field(data, 0)))
             return
         }
+        if (eventName === "rlnStateChanged") {
+            var rln = asText(field(data, 0))
+            boardLog("delivery_module.rlnStateChanged " + rln)
+            if (rln === "Ready") ensureMembership()
+            return
+        }
         if (eventName === "messageError") {
             var req = asText(field(data, 0))
             var err = asText(field(data, 2))
             boardLog("delivery_module.messageError " + req + " " + err)
-            if (!pendingRequest || req === pendingRequest) {
-                publishing = false
-                publishNote = "score was not published"
-                syncHud()
+            if (pendingRequest && req !== pendingRequest) return
+            if (pendingBody && sendTries < 4) {
+                sendRetry.restart()
+                return
             }
+            publishing = false
+            publishNote = "score was not published"
+            syncHud()
             return
         }
         if (eventName === "messageSent") {
@@ -854,6 +985,7 @@ Item {
             sharedRows = Board.merge(sharedRows, parsed)
             publishing = false
             publishNote = ""
+            pendingBody = ""
             boardLog("delivery_module.score " + parsed.name + " " + parsed.score)
             scheduleUpload()
             syncHud()

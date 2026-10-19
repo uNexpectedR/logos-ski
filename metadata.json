@@ -1,13 +1,13 @@
 {
   "name": "logos_ski",
   "display_name": "Logos Ski",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "ui_qml",
   "category": "game",
   "description": "Downhill ski run.",
   "view": "qml/Main.qml",
   "icon": "assets/icon.png",
-  "dependencies": ["delivery_module", "storage_module"],
+  "dependencies": ["delivery_module", "storage_module", "liblogos_rln_module"],
   "nix": {
     "packages": {
       "build": [],
