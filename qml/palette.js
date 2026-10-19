@@ -11,6 +11,9 @@ function tokens() {
         visor: "#9ae6ff",
         skin: "#f0c9a0",
         boot: "#0e1412",
-        pine: "#1c4636"
+        pine: "#1c4636",
+        snow: "#f7fbf8",
+        snowShade: "#c5d5ce",
+        pileShade: "#aebfb6"
     }
 }

@@ -13,7 +13,7 @@ Item {
     activeFocusOnTab: true
 
     property var pal: Palette.tokens()
-    property var input: ({ left: false, right: false, up: false, down: false })
+    property var input: ({ left: false, right: false, up: false, down: false, hop: false })
     property var state: Game.createState()
     property bool booted: false
     property int frame: 0
@@ -152,8 +152,8 @@ Item {
         Text {
             anchors.centerIn: parent
             text: root.activeFocus
-                  ? "the government will chase you    left / right steer    up slow    down fast    R restart"
-                  : "click the slope to ski    the government will chase you"
+                  ? "left / right steer    up slow    down fast    space jump    R restart"
+                  : "click the slope to ski"
             color: root.pal.paper
             font.pixelSize: 13
             font.family: "monospace"
@@ -225,6 +225,7 @@ Item {
         else if (k === Qt.Key_Right) input.right = down
         else if (k === Qt.Key_Up) input.up = down
         else if (k === Qt.Key_Down) input.down = down
+        else if (down && k === Qt.Key_Space) input.hop = true
         else if (down && k === Qt.Key_R) doRestart()
         else if (down && k === Qt.Key_T) Game.armFast(state)
         event.accepted = true
@@ -264,6 +265,9 @@ Item {
             caughtTitle = "CAUGHT\n" + who + "\n" + Game.score(state) + " pts\nR restart"
         } else if (state.mode === "crash") {
             statusLabel = "wiped out"
+            showCaught = false
+        } else if (state.air > 0) {
+            statusLabel = "air"
             showCaught = false
         } else if (state.ops) {
             statusLabel = "special ops"
