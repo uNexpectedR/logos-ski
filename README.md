@@ -2,7 +2,7 @@
 
 A downhill ski run for Logos Basecamp. The hill is snow, with piles you can ski through. Trees stand in small forests, with paths between them wide enough to ski, including a jump. A tree on the snow wipes you out. Lambda marks are bonuses, kept clear of the trees: a small one is worth some points, and a big one is worth several times more. Ramps launch you, and space is a hop. While you are in the air you pass over trees. Landing on a tree still wipes you out.
 
-Scores are a local top ten on this machine. They stay available offline. There is no networked leaderboard.
+A shared board lists a name and a score when Logos messaging and storage are available. Messaging publishes a score. Storage keeps the board. The local top ten stays on this machine, including when those modules are missing. The shared board then shows as unavailable, and no remote score is invented.
 
 ## Controls
 

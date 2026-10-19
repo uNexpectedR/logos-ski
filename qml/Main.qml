@@ -3,6 +3,7 @@ import Qt.labs.settings 1.0
 import "palette.js" as Palette
 import "game.js" as Game
 import "draw.js" as Draw
+import "board.js" as Board
 
 Item {
     id: root
@@ -20,14 +21,42 @@ Item {
     property string distanceLabel: "0 m"
     property string speedLabel: "0"
     property string statusLabel: "skiing"
-    property string topLabel: "TOP TEN\n—"
+    property string topLabel: "SHARED\n—\n\nTOP TEN\n—"
     property bool showCaught: false
     property string caughtTitle: ""
+
+    property var bridge: null
+    property var sharedRows: []
+    property string deliveryState: "wait"
+    property string storageState: "wait"
+    property bool deliveryFailed: false
+    property bool storageFailed: false
+    property bool deliveryTimedOut: false
+    property bool subscribed: false
+    property bool connected: false
+    property bool deliveryStarted: false
+    property bool showName: false
+    property bool publishing: false
+    property string publishNote: ""
+    property int pendingPoints: 0
+    property bool holdRestart: false
+    property bool asked: false
+    property bool waitingToAsk: false
+    property string pendingRequest: ""
+    property string downloadCid: ""
+    property string downloadBuf: ""
+    property string uploadSession: ""
+    property string uploadBody: ""
+    property bool uploadBusy: false
+    property string uploadedKey: ""
+    property var seenHashes: ({})
 
     Settings {
         id: board
         category: "logos.ski"
         property string top: "[]"
+        property string cid: ""
+        property string player: ""
     }
 
     Timer {
@@ -42,6 +71,36 @@ Item {
         repeat: true
         running: root.booted
         onTriggered: root.tick()
+    }
+
+    Timer {
+        id: deliveryWatch
+        interval: 2000
+        repeat: true
+        running: root.booted && root.deliveryState === "wait"
+        onTriggered: root.pollDelivery()
+    }
+
+    Timer {
+        id: giveUp
+        interval: 22000
+        repeat: false
+        running: root.booted && root.deliveryState === "wait"
+        onTriggered: root.deliveryGiveUp()
+    }
+
+    Timer {
+        id: uploadTimer
+        interval: 1200
+        repeat: false
+        onTriggered: root.uploadBoard()
+    }
+
+    Connections {
+        target: root.bridge
+        function onModuleEventReceived(moduleName, eventName, data) {
+            root.onModuleEvent(moduleName, eventName, data)
+        }
     }
 
     Image {
@@ -63,7 +122,10 @@ Item {
     MouseArea {
         anchors.fill: parent
         z: 1
-        onPressed: root.forceActiveFocus()
+        onPressed: {
+            if (root.showName) return
+            root.forceActiveFocus()
+        }
     }
 
     Rectangle {
@@ -132,12 +194,13 @@ Item {
         anchors.topMargin: 70
         anchors.right: parent.right
         anchors.rightMargin: 12
-        width: 148
-        height: topText.implicitHeight + 16
+        width: 228
+        height: Math.min(topText.implicitHeight + 16, root.height - 120)
         color: root.pal.paper
         opacity: 0.92
         border.color: root.pal.steel
         border.width: 1
+        clip: true
 
         Text {
             id: topText
@@ -149,6 +212,7 @@ Item {
             color: root.pal.ink
             font.pixelSize: 13
             font.family: "monospace"
+            wrapMode: Text.NoWrap
         }
     }
 
@@ -173,7 +237,7 @@ Item {
 
     Rectangle {
         z: 3
-        visible: root.showCaught
+        visible: root.showCaught && !root.showName
         anchors.centerIn: parent
         width: 320
         height: 168
@@ -200,6 +264,98 @@ Item {
         }
     }
 
+    Rectangle {
+        id: nameCard
+        z: 4
+        visible: root.showName
+        anchors.centerIn: parent
+        width: 360
+        height: 220
+        color: root.pal.paper
+        border.color: root.pal.ink
+        border.width: 2
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 8
+            color: root.pal.signal
+        }
+
+        Text {
+            id: nameTitle
+            anchors.top: parent.top
+            anchors.topMargin: 22
+            anchors.horizontalCenter: parent.horizontalCenter
+            horizontalAlignment: Text.AlignHCenter
+            text: "NAME\n" + root.pendingPoints + " pts on the board"
+            color: root.pal.ink
+            font.pixelSize: 18
+            font.bold: true
+            font.family: "monospace"
+        }
+
+        Rectangle {
+            anchors.top: nameTitle.bottom
+            anchors.topMargin: 16
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 240
+            height: 36
+            color: root.pal.paper
+            border.color: root.pal.steel
+            border.width: 1
+
+            TextInput {
+                id: nameField
+                anchors.fill: parent
+                anchors.margins: 6
+                color: root.pal.ink
+                font.pixelSize: 16
+                font.family: "monospace"
+                maximumLength: 16
+                selectByMouse: true
+                clip: true
+                onAccepted: root.submitName()
+            }
+        }
+
+        Text {
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 18
+            anchors.left: parent.left
+            anchors.leftMargin: 28
+            text: "save"
+            color: root.pal.ink
+            font.pixelSize: 16
+            font.bold: true
+            font.family: "monospace"
+
+            MouseArea {
+                anchors.fill: parent
+                anchors.margins: -8
+                onClicked: root.submitName()
+            }
+        }
+
+        Text {
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 18
+            anchors.right: parent.right
+            anchors.rightMargin: 28
+            text: "skip"
+            color: root.pal.steel
+            font.pixelSize: 16
+            font.family: "monospace"
+
+            MouseArea {
+                anchors.fill: parent
+                anchors.margins: -8
+                onClicked: root.skipName()
+            }
+        }
+    }
+
     Keys.onPressed: handleKey(event, true)
     Keys.onReleased: handleKey(event, false)
 
@@ -214,12 +370,18 @@ Item {
         loadScores()
         Game.prime(state)
         booted = true
+        openBoard()
         syncHud()
         canvas.requestPaint()
         forceActiveFocus()
     }
 
     function tick() {
+        if (showName || holdRestart) {
+            syncHud()
+            canvas.requestPaint()
+            return
+        }
         state.width = width
         state.height = height
         state.skierScreenY = height * 0.34
@@ -231,6 +393,10 @@ Item {
     }
 
     function handleKey(event, down) {
+        if (showName) {
+            event.accepted = false
+            return
+        }
         var k = event.key
         if (k === Qt.Key_Left) input.left = down
         else if (k === Qt.Key_Right) input.right = down
@@ -243,10 +409,97 @@ Item {
     }
 
     function doRestart() {
+        if (showName) return
+        var points = Game.score(state)
+        var wantName = !asked && points > 0 && Board.qualifies(sharedRows, points) &&
+                (deliveryState === "up" || deliveryState === "wait")
+        if (wantName && !state.recorded) {
+            Game.recordScore(state)
+            saveScores()
+        }
+        if (wantName) {
+            pendingPoints = points
+            holdRestart = true
+            waitingToAsk = true
+            maybeAsk()
+            return
+        }
+        doRestartNow()
+    }
+
+    function doRestartNow() {
+        holdRestart = false
+        waitingToAsk = false
+        asked = false
+        showName = false
+        publishing = false
         Game.restart(state)
         saveScores()
         syncHud()
         canvas.requestPaint()
+        forceActiveFocus()
+    }
+
+    function maybeAsk() {
+        if (asked || showName) return
+        if (state.mode !== "caught" && !waitingToAsk) return
+        var points = pendingPoints > 0 ? pendingPoints : Game.score(state)
+        if (!Board.qualifies(sharedRows, points)) {
+            if (holdRestart) doRestartNow()
+            return
+        }
+        if (deliveryState === "down") {
+            waitingToAsk = false
+            if (holdRestart) doRestartNow()
+            return
+        }
+        if (deliveryState !== "up") {
+            waitingToAsk = true
+            pendingPoints = points
+            return
+        }
+        asked = true
+        waitingToAsk = false
+        pendingPoints = points
+        showName = true
+        nameField.text = board.player || ""
+        nameField.forceActiveFocus()
+    }
+
+    function submitName() {
+        var name = Board.cleanName(nameField.text)
+        if (!name) return
+        board.player = name
+        var id = Date.now() + "-" + Math.floor(Math.random() * 1000000)
+        var body = Board.scoreMessage(name, pendingPoints, id)
+        showName = false
+        publishing = true
+        publishNote = ""
+        syncHud()
+        callMod("delivery_module", "send", [Board.TOPIC, body], function (res) {
+            var parsed = asResult(res)
+            if (!parsed.ok) {
+                publishing = false
+                publishNote = "score was not published"
+                boardLog("delivery_module.send failed " + parsed.error)
+                finishAsk()
+                return
+            }
+            pendingRequest = parsed.value ? String(parsed.value) : ""
+            boardLog("delivery_module.send " + pendingRequest)
+            finishAsk()
+        })
+    }
+
+    function skipName() {
+        showName = false
+        publishing = false
+        finishAsk()
+    }
+
+    function finishAsk() {
+        if (holdRestart || state.mode === "caught") doRestartNow()
+        else syncHud()
     }
 
     function loadScores() {
@@ -290,7 +543,27 @@ Item {
             statusLabel = "skiing"
             showCaught = false
         }
-        var lines = ["TOP TEN"]
+        var lines = ["SHARED"]
+        var remote = sharedRows || []
+        if (deliveryState === "down" && storageState !== "up" && !remote.length) {
+            lines.push("shared board unavailable")
+        } else if (deliveryState === "down" && !remote.length) {
+            lines.push("shared board unavailable")
+        } else if (remote.length) {
+            var shown = Board.lines(remote)
+            var n
+            for (n = 0; n < shown.length; n++) lines.push(shown[n])
+        } else if (publishing) {
+            lines.push("publishing")
+        } else if (publishNote) {
+            lines.push(publishNote)
+        } else if (deliveryState === "down") {
+            lines.push("shared board unavailable")
+        } else {
+            lines.push("—")
+        }
+        lines.push("")
+        lines.push("TOP TEN")
         var list = state.top || []
         if (!list.length) lines.push("—")
         var i
@@ -298,5 +571,424 @@ Item {
             lines.push((i + 1) + "  " + list[i])
         }
         topLabel = lines.join("\n")
+        if (state.mode === "caught" || waitingToAsk) maybeAsk()
+    }
+
+    function logosObject() {
+        try {
+            if (typeof logos !== "undefined" && logos && logos.callModuleAsync) return logos
+        } catch (e) {
+        }
+        return null
+    }
+
+    function boardLog(text) {
+        console.log("SKI-BOARD " + text)
+    }
+
+    function asResult(payload) {
+        if (payload === null || payload === undefined) {
+            return { ok: false, value: null, error: "empty" }
+        }
+        var text = typeof payload === "string" ? payload : ""
+        if (typeof payload !== "string") {
+            try { text = JSON.stringify(payload) } catch (e2) { text = String(payload) }
+        }
+        var obj = null
+        try { obj = JSON.parse(text) } catch (e3) { obj = null }
+        if (obj && typeof obj === "object" &&
+                (obj.success === true || obj.success === false || obj.error)) {
+            return {
+                ok: obj.success === true,
+                value: obj.value !== undefined ? obj.value : null,
+                error: obj.error ? String(obj.error) : ""
+            }
+        }
+        if (text === "true") return { ok: true, value: true, error: "" }
+        if (text === "false") return { ok: false, value: false, error: "" }
+        if (obj !== null) return { ok: true, value: obj, error: "" }
+        return { ok: text.length > 0, value: text, error: text.length ? "" : "empty" }
+    }
+
+    function softError(err) {
+        var s = (err || "").toLowerCase()
+        return s.indexOf("already") >= 0 || s.indexOf("exist") >= 0 || s.indexOf("running") >= 0
+    }
+
+    function callMod(moduleName, method, args, done) {
+        var api = bridge || logosObject()
+        if (!api) {
+            done("{\"success\":false,\"error\":\"logos bridge missing\"}")
+            return
+        }
+        try {
+            api.callModuleAsync(moduleName, method, args, function (payload) {
+                done(payload)
+            }, 20000)
+        } catch (e) {
+            done("{\"success\":false,\"error\":\"" + String(e) + "\"}")
+        }
+    }
+
+    function openBoard() {
+        var api = logosObject()
+        if (!api) {
+            deliveryFailed = true
+            storageFailed = true
+            deliveryState = "down"
+            storageState = "down"
+            boardLog("logos bridge missing")
+            syncHud()
+            return
+        }
+        bridge = api
+        arm("delivery_module", "messageReceived")
+        arm("delivery_module", "connectionStateChanged")
+        arm("delivery_module", "messageError")
+        arm("delivery_module", "messageSent")
+        arm("storage_module", "storageStart")
+        arm("storage_module", "storageDownloadProgress")
+        arm("storage_module", "storageDownloadDone")
+        arm("storage_module", "storageUploadProgress")
+        startDelivery()
+        startStorage()
+    }
+
+    function arm(moduleName, eventName) {
+        var api = bridge || logosObject()
+        var ok = false
+        try {
+            ok = api.onModuleEvent(moduleName, eventName) === true
+        } catch (e) {
+            ok = false
+            boardLog(moduleName + " " + eventName + " arm threw " + e)
+        }
+        boardLog(moduleName + "." + eventName + (ok ? " armed" : " not armed"))
+        if (!ok) {
+            if (moduleName === "delivery_module") deliveryFailed = true
+            if (moduleName === "storage_module") storageFailed = true
+        }
+    }
+
+    function startDelivery() {
+        callMod("delivery_module", "createNode",
+                ['{"mode":"Edge","preset":"logos.test"}'], function (payload) {
+            var parsed = asResult(payload)
+            boardLog("delivery_module.createNode " + (parsed.ok ? "ok" : parsed.error))
+            if (!parsed.ok && !softError(parsed.error)) deliveryFailed = true
+            callMod("delivery_module", "start", [], function (payload2) {
+                var started = asResult(payload2)
+                boardLog("delivery_module.start " + (started.ok ? "ok" : started.error))
+                if (!started.ok && !softError(started.error)) {
+                    deliveryFailed = true
+                    refreshDelivery()
+                    return
+                }
+                deliveryStarted = true
+                subscribeTopic()
+                pollDelivery()
+            })
+        })
+    }
+
+    function subscribeTopic() {
+        if (subscribed) return
+        callMod("delivery_module", "subscribe", [Board.TOPIC], function (payload) {
+            var parsed = asResult(payload)
+            boardLog("delivery_module.subscribe " + (parsed.ok ? "ok" : parsed.error))
+            if (!parsed.ok && !softError(parsed.error)) {
+                deliveryFailed = true
+                refreshDelivery()
+                return
+            }
+            subscribed = true
+            refreshDelivery()
+        })
+    }
+
+    function pollDelivery() {
+        if (!deliveryStarted) return
+        callMod("delivery_module", "getConnectionStatus", [], function (payload) {
+            var parsed = asResult(payload)
+            var status = parsed.value ? String(parsed.value) : ""
+            if (!parsed.ok) {
+                boardLog("delivery_module.getConnectionStatus " + parsed.error)
+                return
+            }
+            noteConnection(status)
+        })
+    }
+
+    function noteConnection(status) {
+        boardLog("delivery_module.connection " + status)
+        if (status === "Connected" || status === "PartiallyConnected") {
+            connected = true
+            if (!subscribed) subscribeTopic()
+            refreshDelivery()
+        }
+    }
+
+    function refreshDelivery() {
+        if (subscribed) {
+            if (deliveryState !== "up") {
+                deliveryState = "up"
+                boardLog("delivery_module up")
+                syncHud()
+            }
+            return
+        }
+        if ((deliveryFailed || deliveryTimedOut) && deliveryState !== "down") {
+            deliveryState = "down"
+            boardLog("delivery_module unavailable")
+            syncHud()
+        }
+    }
+
+    function deliveryGiveUp() {
+        if (!subscribed && deliveryState !== "up") {
+            deliveryTimedOut = true
+            boardLog("delivery_module timed out")
+            refreshDelivery()
+        }
+        if (storageState === "wait") {
+            storageFailed = true
+            storageState = "down"
+            boardLog("storage_module timed out")
+            syncHud()
+        }
+    }
+
+    function startStorage() {
+        callMod("storage_module", "loadConfigOrDefault", [], function (payload) {
+            var parsed = asResult(payload)
+            var cfg = parsed.ok && parsed.value ? String(parsed.value) : ""
+            boardLog("storage_module.loadConfigOrDefault " + (cfg ? "ok" : parsed.error))
+            if (!cfg) {
+                storageFailed = true
+                storageState = "down"
+                boardLog("storage_module unavailable")
+                syncHud()
+                return
+            }
+            callMod("storage_module", "init", [cfg], function (payload2) {
+                var inited = asResult(payload2)
+                var initOk = inited.ok || inited.value === true || softError(inited.error)
+                boardLog("storage_module.init " + (initOk ? "ok" : inited.error))
+                if (!initOk) storageFailed = true
+                callMod("storage_module", "start", [], function (payload3) {
+                    var started = asResult(payload3)
+                    var startOk = started.ok || started.value === true || softError(started.error)
+                    boardLog("storage_module.start " + (startOk ? "ok" : started.error))
+                    if (!startOk) {
+                        storageFailed = true
+                        storageState = "down"
+                        boardLog("storage_module unavailable")
+                        syncHud()
+                    }
+                })
+            })
+        })
+    }
+
+    function onModuleEvent(moduleName, eventName, data) {
+        if (moduleName === "delivery_module") onDelivery(eventName, data)
+        else if (moduleName === "storage_module") onStorage(eventName, data)
+    }
+
+    function field(data, index) {
+        try {
+            if (!data) return null
+            return data[index]
+        } catch (e) {
+            return null
+        }
+    }
+
+    function asText(value) {
+        if (value === null || value === undefined) return ""
+        if (typeof value === "string") return value
+        try {
+            var s = String(value)
+            if (s && s !== "[object Object]") return s
+        } catch (e) {
+        }
+        return ""
+    }
+
+    function onDelivery(eventName, data) {
+        if (eventName === "connectionStateChanged") {
+            noteConnection(asText(field(data, 0)))
+            return
+        }
+        if (eventName === "messageError") {
+            var req = asText(field(data, 0))
+            var err = asText(field(data, 2))
+            boardLog("delivery_module.messageError " + req + " " + err)
+            if (!pendingRequest || req === pendingRequest) {
+                publishing = false
+                publishNote = "score was not published"
+                syncHud()
+            }
+            return
+        }
+        if (eventName === "messageSent") {
+            boardLog("delivery_module.messageSent " + asText(field(data, 0)))
+            return
+        }
+        if (eventName !== "messageReceived") return
+        var hash = asText(field(data, 0))
+        var topic = asText(field(data, 1))
+        if (topic && topic !== Board.TOPIC) return
+        if (hash) {
+            if (seenHashes[hash]) return
+            seenHashes[hash] = true
+        }
+        var text = asText(field(data, 2))
+        var parsed = Board.parsePayload(text)
+        if (!parsed) parsed = Board.parsePayload(Board.b64decode(text))
+        if (!parsed) {
+            boardLog("delivery_module.messageReceived unparsed")
+            return
+        }
+        if (parsed.kind === "score") {
+            sharedRows = Board.merge(sharedRows, parsed)
+            publishing = false
+            publishNote = ""
+            boardLog("delivery_module.score " + parsed.name + " " + parsed.score)
+            scheduleUpload()
+            syncHud()
+            return
+        }
+        if (parsed.kind === "board" && parsed.cid && parsed.cid !== downloadCid) {
+            board.cid = parsed.cid
+            fetchBoard(parsed.cid)
+        }
+    }
+
+    function onStorage(eventName, data) {
+        var raw = asText(field(data, 0))
+        var obj = null
+        try { obj = JSON.parse(raw) } catch (e) { obj = null }
+        if (eventName === "storageStart") {
+            var up = obj && obj.success === true
+            boardLog("storage_module.storageStart " + (up ? "ok" : raw))
+            if (!up) {
+                storageFailed = true
+                storageState = "down"
+                syncHud()
+                return
+            }
+            storageState = "up"
+            syncHud()
+            if (board.cid) fetchBoard(board.cid)
+            return
+        }
+        if (eventName === "storageDownloadProgress") {
+            if (!obj || obj.success === false || !obj.chunk) return
+            downloadBuf += Board.b64decode(obj.chunk)
+            return
+        }
+        if (eventName === "storageDownloadDone") {
+            var cid = downloadCid
+            var ok = obj && obj.success !== false
+            boardLog("storage_module.storageDownloadDone " + (ok ? cid : raw))
+            if (!ok) {
+                downloadBuf = ""
+                downloadCid = ""
+                return
+            }
+            var doc = Board.parsePayload(downloadBuf)
+            downloadBuf = ""
+            downloadCid = ""
+            if (!doc || doc.kind !== "logos-ski-board") {
+                boardLog("storage_module.board unparsed")
+                return
+            }
+            var combined = Board.merge(sharedRows, null)
+            var i
+            for (i = 0; i < doc.rows.length; i++) combined = Board.merge(combined, doc.rows[i])
+            sharedRows = combined
+            boardLog("storage_module.board rows " + sharedRows.length)
+            scheduleUpload()
+            syncHud()
+            return
+        }
+        if (eventName === "storageUploadProgress") {
+            if (!obj || obj.sessionId !== uploadSession) return
+            if (obj.success === false) {
+                boardLog("storage_module.uploadChunk " + (obj.error || "failed"))
+                uploadBusy = false
+                uploadSession = ""
+                return
+            }
+            var session = uploadSession
+            callMod("storage_module", "uploadFinalize", [session], function (payload) {
+                var parsed = asResult(payload)
+                uploadBusy = false
+                uploadSession = ""
+                if (!parsed.ok || !parsed.value) {
+                    boardLog("storage_module.uploadFinalize " + parsed.error)
+                    return
+                }
+                var nextCid = String(parsed.value)
+                board.cid = nextCid
+                uploadedKey = JSON.stringify(sharedRows)
+                boardLog("storage_module.uploadFinalize " + nextCid)
+                callMod("delivery_module", "send", [Board.TOPIC, Board.boardPointer(nextCid)], function (sent) {
+                    var announce = asResult(sent)
+                    boardLog("delivery_module.board " + (announce.ok ? nextCid : announce.error))
+                })
+            })
+        }
+    }
+
+    function fetchBoard(cid) {
+        if (!cid || storageState !== "up" || downloadCid) return
+        downloadCid = cid
+        downloadBuf = ""
+        boardLog("storage_module.downloadChunks " + cid)
+        callMod("storage_module", "downloadChunks", [cid, false, 65536, false, true], function (payload) {
+            var parsed = asResult(payload)
+            if (!parsed.ok) {
+                boardLog("storage_module.downloadChunks failed " + parsed.error)
+                downloadCid = ""
+                downloadBuf = ""
+            }
+        })
+    }
+
+    function scheduleUpload() {
+        if (storageState !== "up") return
+        if (!sharedRows || !sharedRows.length) return
+        if (JSON.stringify(sharedRows) === uploadedKey) return
+        uploadTimer.restart()
+    }
+
+    function uploadBoard() {
+        if (storageState !== "up" || uploadBusy) return
+        if (!sharedRows || !sharedRows.length) return
+        var key = JSON.stringify(sharedRows)
+        if (key === uploadedKey) return
+        var body = Board.boardDocument(sharedRows)
+        uploadBusy = true
+        uploadBody = body
+        callMod("storage_module", "uploadInit", ["logos-ski-board.json", 65536, true], function (payload) {
+            var parsed = asResult(payload)
+            if (!parsed.ok || !parsed.value) {
+                uploadBusy = false
+                boardLog("storage_module.uploadInit " + parsed.error)
+                return
+            }
+            uploadSession = String(parsed.value)
+            boardLog("storage_module.uploadInit " + uploadSession)
+            callMod("storage_module", "uploadChunk", [uploadSession, body], function (chunked) {
+                var chunk = asResult(chunked)
+                if (!chunk.ok) {
+                    uploadBusy = false
+                    boardLog("storage_module.uploadChunk " + chunk.error)
+                    uploadSession = ""
+                }
+            })
+        })
     }
 }
