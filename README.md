@@ -1,6 +1,6 @@
 # Logos Ski
 
-A downhill ski run for Logos Basecamp. The hill is snow, with piles you can ski through. Trees wipe you out. Lambda marks are bonuses, kept clear of the trees: a small one is worth some points, and a big one is worth several times more. Ramps launch you, and space is a hop. While you are in the air you pass over trees. Landing on a tree still wipes you out. The government will chase you, then a bigger Special Ops figure.
+A downhill ski run for Logos Basecamp. The hill is snow, with piles you can ski through. Trees wipe you out. Lambda marks are bonuses, kept clear of the trees: a small one is worth some points, and a big one is worth several times more. Ramps launch you, and space is a hop. While you are in the air you pass over trees. Landing on a tree still wipes you out.
 
 Scores are a local top ten on this machine. They stay available offline. There is no networked leaderboard.
 

@@ -4,7 +4,7 @@
   "version": "1.2.0",
   "type": "ui_qml",
   "category": "game",
-  "description": "Downhill ski run. The government will chase you.",
+  "description": "Downhill ski run.",
   "view": "qml/Main.qml",
   "icon": "assets/icon.png",
   "dependencies": [],
