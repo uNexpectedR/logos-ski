@@ -59,12 +59,20 @@ Item {
     property bool uploadBusy: false
     property string uploadedKey: ""
     property var seenHashes: ({})
+    property var cidState: ({})
+    property var cidQueue: []
+    property var storedIds: ({})
+    property var anchorIds: ({})
+    property string anchorCid: ""
+    property bool anchorFetched: false
+    property bool anchorFailed: false
 
     Settings {
         id: board
         category: "logos.ski"
         property string top: "[]"
         property string cid: ""
+        property string cids: "[]"
         property string player: ""
     }
 
@@ -100,9 +108,18 @@ Item {
 
     Timer {
         id: uploadTimer
-        interval: 1200
+        interval: 2500
         repeat: false
         onTriggered: root.uploadBoard()
+    }
+
+    Timer {
+        id: downloadWatch
+        interval: 12000
+        repeat: false
+        onTriggered: {
+            if (root.downloadCid) root.failDownload(root.downloadCid, "timed out")
+        }
     }
 
     Timer {
@@ -1052,9 +1069,10 @@ Item {
             syncHud()
             return
         }
-        if (parsed.kind === "board" && parsed.cid && parsed.cid !== downloadCid) {
-            board.cid = parsed.cid
-            fetchBoard(parsed.cid)
+        if (parsed.kind === "board" && parsed.cid) {
+            boardLog("delivery_module.boardPointer " + parsed.cid)
+            rememberCid(parsed.cid)
+            pumpDownloads()
         }
     }
 
@@ -1073,7 +1091,11 @@ Item {
             }
             storageState = "up"
             syncHud()
-            if (board.cid) fetchBoard(board.cid)
+            loadSavedCids()
+            anchorCid = board.cid || ""
+            if (anchorCid) rememberCid(anchorCid)
+            else anchorFetched = true
+            pumpDownloads()
             return
         }
         if (eventName === "storageDownloadProgress") {
@@ -1086,24 +1108,20 @@ Item {
             var ok = obj && obj.success !== false
             boardLog("storage_module.storageDownloadDone " + (ok ? cid : raw))
             if (!ok) {
-                downloadBuf = ""
-                downloadCid = ""
+                failDownload(cid, raw || "failed")
                 return
             }
             var doc = Board.parsePayload(downloadBuf)
             downloadBuf = ""
             downloadCid = ""
             if (!doc || doc.kind !== "logos-ski-board") {
-                boardLog("storage_module.board unparsed")
+                boardLog("storage_module.board unparsed " + cid)
+                failDownload(cid, "unparsed")
                 return
             }
-            var combined = Board.merge(sharedRows, null)
-            var i
-            for (i = 0; i < doc.rows.length; i++) combined = Board.merge(combined, doc.rows[i])
-            sharedRows = combined
-            boardLog("storage_module.board rows " + sharedRows.length)
-            scheduleUpload()
-            syncHud()
+            downloadWatch.stop()
+            absorbBoard(cid, doc.rows)
+            pumpDownloads()
             return
         }
         if (eventName === "storageUploadProgress") {
@@ -1125,8 +1143,10 @@ Item {
                 }
                 var nextCid = String(parsed.value)
                 board.cid = nextCid
+                cidState[nextCid] = "merged"
+                saveCidList()
                 uploadedKey = JSON.stringify(sharedRows)
-                boardLog("storage_module.uploadFinalize " + nextCid)
+                boardLog("storage_module.uploadFinalize " + nextCid + " rows " + sharedRows.length + " " + rowBrief(sharedRows))
                 callMod("delivery_module", "send", [Board.TOPIC, Board.boardPointer(nextCid)], function (sent) {
                     var announce = asResult(sent)
                     boardLog("delivery_module.board " + (announce.ok ? nextCid : announce.error))
@@ -1135,34 +1155,157 @@ Item {
         }
     }
 
+    function rowBrief(rows) {
+        var parts = []
+        var i
+        if (!rows) return ""
+        for (i = 0; i < rows.length; i++) parts.push(rows[i].name + " " + rows[i].score)
+        return parts.join(", ")
+    }
+
+    function rememberCid(cid) {
+        if (!cid) return
+        var id = String(cid)
+        if (cidState[id]) return
+        cidState[id] = "queued"
+        cidQueue.push(id)
+        saveCidList()
+        boardLog("storage_module.cid " + id)
+    }
+
+    function saveCidList() {
+        var ids = []
+        var k
+        for (k in cidState) ids.push(k)
+        board.cids = JSON.stringify(ids)
+    }
+
+    function loadSavedCids() {
+        var parsed = []
+        try { parsed = JSON.parse(board.cids || "[]") } catch (e) { parsed = [] }
+        if (!parsed || parsed.length === undefined) return
+        var i
+        for (i = 0; i < parsed.length; i++) rememberCid(String(parsed[i]))
+    }
+
+    function noteStored(rows) {
+        var i
+        for (i = 0; i < rows.length; i++) {
+            var id = rows[i].id
+            var prev = storedIds[id]
+            if (prev === undefined || rows[i].score > prev) storedIds[id] = rows[i].score
+        }
+    }
+
+    function coversStored(rows) {
+        var id
+        for (id in storedIds) {
+            var found = false
+            var i
+            var need = storedIds[id]
+            if (typeof need !== "number") continue
+            for (i = 0; i < rows.length; i++) {
+                if (rows[i].id === id && rows[i].score >= need) {
+                    found = true
+                    break
+                }
+            }
+            if (found) continue
+            if (rows.length >= 10 && rows[rows.length - 1].score >= need) continue
+            return false
+        }
+        return true
+    }
+
+    function canUpload() {
+        if (storageState !== "up" || anchorFailed || !anchorFetched) return false
+        if (downloadCid || cidQueue.length || uploadBusy) return false
+        if (!sharedRows || !sharedRows.length) return false
+        if (!coversStored(sharedRows)) return false
+        if (!needsPublish()) return false
+        return true
+    }
+
+    function needsPublish() {
+        var i
+        for (i = 0; i < sharedRows.length; i++) {
+            var id = sharedRows[i].id
+            var known = anchorIds[id]
+            if (typeof known !== "number") return true
+            if (sharedRows[i].score > known) return true
+        }
+        return false
+    }
+
+    function absorbBoard(cid, rows) {
+        var combined = Board.merge(sharedRows, null)
+        var i
+        for (i = 0; i < rows.length; i++) combined = Board.merge(combined, rows[i])
+        sharedRows = combined
+        noteStored(rows)
+        if (cid) cidState[cid] = "merged"
+        if (cid && cid === anchorCid) {
+            anchorFetched = true
+            var n
+            for (n = 0; n < rows.length; n++) anchorIds[rows[n].id] = rows[n].score
+        }
+        boardLog("storage_module.board rows " + sharedRows.length + " " + rowBrief(sharedRows))
+        syncHud()
+    }
+
+    function failDownload(cid, why) {
+        downloadWatch.stop()
+        boardLog("storage_module.download failed " + (cid || "") + " " + why)
+        if (cid && cid === anchorCid) anchorFailed = true
+        if (cid) cidState[cid] = "failed"
+        downloadCid = ""
+        downloadBuf = ""
+        syncHud()
+        pumpDownloads()
+    }
+
+    function pumpDownloads() {
+        if (storageState !== "up" || downloadCid) return
+        if (!cidQueue.length) {
+            scheduleUpload()
+            return
+        }
+        var next = cidQueue[0]
+        var rest = []
+        var i
+        for (i = 1; i < cidQueue.length; i++) rest.push(cidQueue[i])
+        cidQueue = rest
+        if (cidState[next] === "merged") {
+            pumpDownloads()
+            return
+        }
+        fetchBoard(next)
+    }
+
     function fetchBoard(cid) {
         if (!cid || storageState !== "up" || downloadCid) return
         downloadCid = cid
         downloadBuf = ""
+        downloadWatch.restart()
         boardLog("storage_module.downloadChunks " + cid)
         callMod("storage_module", "downloadChunks", [cid, false, 65536, false, true], function (payload) {
             var parsed = asResult(payload)
-            if (!parsed.ok) {
-                boardLog("storage_module.downloadChunks failed " + parsed.error)
-                downloadCid = ""
-                downloadBuf = ""
-            }
+            if (!parsed.ok) failDownload(cid, parsed.error || "failed")
         })
     }
 
     function scheduleUpload() {
-        if (storageState !== "up") return
-        if (!sharedRows || !sharedRows.length) return
+        if (!canUpload()) return
         if (JSON.stringify(sharedRows) === uploadedKey) return
         uploadTimer.restart()
     }
 
     function uploadBoard() {
-        if (storageState !== "up" || uploadBusy) return
-        if (!sharedRows || !sharedRows.length) return
+        if (!canUpload()) return
         var key = JSON.stringify(sharedRows)
         if (key === uploadedKey) return
         var body = Board.boardDocument(sharedRows)
+        boardLog("storage_module.upload rows " + sharedRows.length + " " + rowBrief(sharedRows))
         uploadBusy = true
         uploadBody = body
         callMod("storage_module", "uploadInit", ["logos-ski-board.json", 65536, true], function (payload) {
