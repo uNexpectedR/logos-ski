@@ -34,7 +34,10 @@ function createState() {
         scoreDirty: false,
         recorded: false,
         caughtBy: "",
-        placed: false
+        placed: false,
+        evadeT: 0,
+        evadeCd: 0,
+        evadeDir: 1
     }
 }
 
@@ -64,6 +67,7 @@ function step(state, dt, input) {
         return
     }
     steer(state, dt, input)
+    evade(state, dt, input)
     if (input.hop) {
         if (state.air <= 0) launch(state, 0.58)
         input.hop = false
@@ -78,6 +82,57 @@ function step(state, dt, input) {
         if (state.air < 0) state.air = 0
     }
     collide(state)
+}
+
+function entryScore(item) {
+    if (typeof item === "number") return item
+    if (item && typeof item.score === "number") return item.score
+    return 0
+}
+
+function chaserAfter(state) {
+    return !!(state.agent || state.ops)
+}
+
+function evadeSide(state) {
+    var threat = state.agent
+    if (state.ops && state.agent) {
+        var agentGap = state.travel - state.agent.y
+        var opsGap = state.travel - state.ops.y
+        threat = opsGap < agentGap ? state.ops : state.agent
+    } else if (state.ops) {
+        threat = state.ops
+    }
+    if (!threat) return state.skierX < state.width * 0.5 ? 1 : -1
+    var dx = state.skierX - threat.x
+    if (dx > 12) return 1
+    if (dx < -12) return -1
+    return state.skierX < state.width * 0.5 ? 1 : -1
+}
+
+function evade(state, dt, input) {
+    if (state.evadeCd > 0) state.evadeCd -= dt
+    if (input.evade) {
+        input.evade = false
+        if (state.evadeCd <= 0 && state.evadeT <= 0 && chaserAfter(state)) {
+            state.evadeDir = evadeSide(state)
+            state.evadeT = 0.2
+            state.evadeCd = 2.2
+        }
+    }
+    if (state.evadeT > 0) {
+        state.skierX += state.evadeDir * 980 * dt
+        state.vx = state.evadeDir * 340
+        state.evadeT -= dt
+        if (state.skierX < 36) {
+            state.skierX = 36
+            state.vx = 0
+        }
+        if (state.skierX > state.width - 36) {
+            state.skierX = state.width - 36
+            state.vx = 0
+        }
+    }
 }
 
 function launch(state, dur) {
@@ -401,14 +456,16 @@ function finish(state, by) {
     recordScore(state)
 }
 
-function recordScore(state) {
+function recordScore(state, name) {
     if (state.recorded) return
     state.recorded = true
     var list = []
     var i
     for (i = 0; i < state.top.length; i++) list.push(state.top[i])
-    list.push(score(state))
-    list.sort(function (a, b) { return b - a })
+    var points = score(state)
+    if (name) list.push({ name: name, score: points })
+    else list.push(points)
+    list.sort(function (a, b) { return entryScore(b) - entryScore(a) })
     if (list.length > 10) list.length = 10
     state.top = list
     state.scoreDirty = true

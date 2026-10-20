@@ -284,19 +284,19 @@ function drawSkier(ctx, state, pal) {
     ctx.lineCap = "round"
     ctx.lineWidth = 3.5
     ctx.save()
-    ctx.rotate(lean * 0.45)
+    ctx.rotate(lean * 0.85)
     ctx.beginPath()
-    ctx.moveTo(-26, 6)
-    ctx.lineTo(24, 14)
-    ctx.moveTo(-16, 11)
-    ctx.lineTo(30, 17)
+    ctx.moveTo(-8, -4)
+    ctx.lineTo(-8, 30)
+    ctx.moveTo(8, -4)
+    ctx.lineTo(8, 30)
     ctx.stroke()
     ctx.lineWidth = 2
     ctx.beginPath()
-    ctx.moveTo(24, 14)
-    ctx.lineTo(30, 10)
-    ctx.moveTo(30, 17)
-    ctx.lineTo(36, 13)
+    ctx.moveTo(-8, 30)
+    ctx.lineTo(-6, 36)
+    ctx.moveTo(8, 30)
+    ctx.lineTo(10, 36)
     ctx.stroke()
     ctx.restore()
     ctx.lineWidth = 3

@@ -1,12 +1,18 @@
 var TOPIC = "/logos-ski/1/scores/json"
 var LIMIT = 10
 
+function rowScore(row) {
+    if (typeof row === "number") return row
+    if (row && typeof row.score === "number") return row.score
+    return NaN
+}
+
 function qualifies(rows, points) {
     if (typeof points !== "number" || points !== points || points <= 0) return false
     if (!rows || rows.length < LIMIT) return true
-    var last = rows[rows.length - 1]
-    if (!last || typeof last.score !== "number") return true
-    return points >= last.score
+    var lastScore = rowScore(rows[rows.length - 1])
+    if (lastScore !== lastScore) return true
+    return points >= lastScore
 }
 
 function cleanName(raw) {
@@ -147,6 +153,10 @@ function runBoardTests() {
     if (qualifies(full, 50)) throw new Error("below last")
     if (!qualifies(full, 200)) throw new Error("above last")
     if (!qualifies(full, 91)) throw new Error("tie last")
+    var numbers = []
+    for (n = 0; n < 10; n++) numbers.push(100 - n)
+    if (qualifies(numbers, 50)) throw new Error("number below")
+    if (!qualifies(numbers, 100)) throw new Error("number tie")
     var merged = merge(
         [{ name: "ada", score: 10, id: "a" }, { name: "bea", score: 30, id: "b" }],
         { name: "ada", score: 40, id: "a" }

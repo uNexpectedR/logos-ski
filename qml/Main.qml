@@ -14,9 +14,10 @@ Item {
     activeFocusOnTab: true
 
     property var pal: Palette.tokens()
-    property var input: ({ left: false, right: false, up: false, down: false, hop: false })
+    property var input: ({ left: false, right: false, up: false, down: false, hop: false, evade: false })
     property var state: Game.createState()
     property bool booted: false
+    property bool keysReady: false
     property int frame: 0
     property string distanceLabel: "0 m"
     property string speedLabel: "0"
@@ -159,7 +160,11 @@ Item {
         anchors.fill: parent
         z: 1
         onPressed: {
-            if (root.showName) return
+            if (root.showName) {
+                root.focusName()
+                return
+            }
+            root.keysReady = true
             root.forceActiveFocus()
         }
     }
@@ -262,8 +267,8 @@ Item {
 
         Text {
             anchors.centerIn: parent
-            text: root.activeFocus
-                  ? "left / right steer    up slow    down fast    space jump    R restart"
+            text: root.keysReady
+                  ? "left / right steer    up slow    down fast    space jump    shift evade    R restart"
                   : "click the slope to ski"
             color: root.pal.paper
             font.pixelSize: 13
@@ -351,6 +356,7 @@ Item {
                 font.family: "monospace"
                 maximumLength: 16
                 selectByMouse: true
+                activeFocusOnPress: true
                 clip: true
                 onAccepted: root.submitName()
             }
@@ -392,8 +398,23 @@ Item {
         }
     }
 
+    Keys.enabled: !nameField.activeFocus
     Keys.onPressed: handleKey(event, true)
-    Keys.onReleased: handleKey(event, false)
+    Keys.onReleased: {
+        handleKey(event, false)
+        if (showName && !nameField.activeFocus) nameFocus.restart()
+    }
+
+    Timer {
+        id: nameFocus
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!root.showName) return
+            nameField.forceActiveFocus()
+            if (nameField.text === "R" || nameField.text === "r") nameField.text = ""
+        }
+    }
 
     function boot() {
         if (booted) return
@@ -406,6 +427,7 @@ Item {
         loadScores()
         Game.prime(state)
         booted = true
+        keysReady = true
         openBoard()
         syncHud()
         canvas.requestPaint()
@@ -439,6 +461,7 @@ Item {
         else if (k === Qt.Key_Up) input.up = down
         else if (k === Qt.Key_Down) input.down = down
         else if (down && k === Qt.Key_Space) input.hop = true
+        else if (down && k === Qt.Key_Shift) input.evade = true
         else if (down && k === Qt.Key_R) doRestart()
         else if (down && k === Qt.Key_T) Game.armFast(state)
         event.accepted = true
@@ -447,12 +470,8 @@ Item {
     function doRestart() {
         if (showName) return
         var points = Game.score(state)
-        var wantName = !asked && points > 0 && Board.qualifies(sharedRows, points) &&
-                (deliveryState === "up" || deliveryState === "wait")
-        if (wantName && !state.recorded) {
-            Game.recordScore(state)
-            saveScores()
-        }
+        var wantName = !asked && points > 0 &&
+                (Board.qualifies(state.top, points) || Board.qualifies(sharedRows, points))
         if (wantName) {
             pendingPoints = points
             holdRestart = true
@@ -468,7 +487,7 @@ Item {
         waitingToAsk = false
         asked = false
         showName = false
-        publishing = false
+        if (!pendingBody) publishing = false
         Game.restart(state)
         saveScores()
         syncHud()
@@ -480,41 +499,44 @@ Item {
         if (asked || showName) return
         if (state.mode !== "caught" && !waitingToAsk) return
         var points = pendingPoints > 0 ? pendingPoints : Game.score(state)
-        if (!Board.qualifies(sharedRows, points)) {
+        if (!Board.qualifies(state.top, points) && !Board.qualifies(sharedRows, points)) {
             if (holdRestart) doRestartNow()
-            return
-        }
-        if (deliveryState === "down") {
-            waitingToAsk = false
-            if (holdRestart) doRestartNow()
-            return
-        }
-        if (deliveryState !== "up") {
-            waitingToAsk = true
-            pendingPoints = points
             return
         }
         asked = true
         waitingToAsk = false
         pendingPoints = points
+        state.vx = 0
         showName = true
-        nameField.text = board.player || ""
+        nameField.text = ""
+        nameFocus.restart()
+    }
+
+    function focusName() {
         nameField.forceActiveFocus()
+        nameFocus.restart()
     }
 
     function submitName() {
         var name = Board.cleanName(nameField.text)
         if (!name) return
         board.player = name
+        Game.recordScore(state, name)
+        saveScores()
         var id = Date.now() + "-" + Math.floor(Math.random() * 1000000)
         var body = Board.scoreMessage(name, pendingPoints, id)
         showName = false
-        publishing = true
         publishNote = ""
         pendingBody = body
         sendTries = 0
+        if (subscribed || deliveryState !== "down") {
+            publishing = true
+            sendPending()
+        } else {
+            publishing = false
+            pendingBody = ""
+        }
         syncHud()
-        sendPending()
         finishAsk()
     }
 
@@ -557,8 +579,11 @@ Item {
     }
 
     function skipName() {
+        if (!state.recorded) Game.recordScore(state)
+        saveScores()
         showName = false
         publishing = false
+        pendingBody = ""
         finishAsk()
     }
 
@@ -582,6 +607,14 @@ Item {
         } catch (e) {
         }
         state.scoreDirty = false
+    }
+
+    function localLine(entry, index) {
+        var n = index + 1
+        if (typeof entry === "number") return n + "  " + entry
+        if (entry && entry.name) return n + "  " + entry.name + "  " + entry.score
+        if (entry && typeof entry.score === "number") return n + "  " + entry.score
+        return n + "  " + entry
     }
 
     function syncHud() {
@@ -633,7 +666,7 @@ Item {
         if (!list.length) lines.push("—")
         var i
         for (i = 0; i < list.length && i < 10; i++) {
-            lines.push((i + 1) + "  " + list[i])
+            lines.push(localLine(list[i], i))
         }
         topLabel = lines.join("\n")
         if (state.mode === "caught" || waitingToAsk) maybeAsk()
@@ -711,6 +744,7 @@ Item {
         arm("delivery_module", "connectionStateChanged")
         arm("delivery_module", "messageError")
         arm("delivery_module", "messageSent")
+        arm("delivery_module", "messagePropagated")
         arm("delivery_module", "rlnStateChanged")
         arm("storage_module", "storageStart")
         arm("storage_module", "storageDownloadProgress")
@@ -745,7 +779,7 @@ Item {
         if (createTries >= 2) return
         createTries = createTries + 1
         callMod("delivery_module", "createNode",
-                ['{"mode":"Edge","preset":"logos.test"}'], function (payload) {
+                ['{"mode":"Edge","preset":"logos.dev"}'], function (payload) {
             var parsed = asResult(payload)
             boardLog("delivery_module.createNode " + (parsed.ok ? "ok" : parsed.error))
             if (!parsed.ok && !softError(parsed.error)) {
@@ -964,6 +998,10 @@ Item {
         }
         if (eventName === "messageSent") {
             boardLog("delivery_module.messageSent " + asText(field(data, 0)))
+            return
+        }
+        if (eventName === "messagePropagated") {
+            boardLog("delivery_module.messagePropagated " + asText(field(data, 0)))
             return
         }
         if (eventName !== "messageReceived") return
