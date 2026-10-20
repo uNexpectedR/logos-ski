@@ -330,7 +330,7 @@ Item {
             anchors.topMargin: 22
             anchors.horizontalCenter: parent.horizontalCenter
             horizontalAlignment: Text.AlignHCenter
-            text: "NAME\n" + root.pendingPoints + " pts on the board"
+            text: root.pendingPoints + " pts on the board"
             color: root.pal.ink
             font.pixelSize: 18
             font.bold: true
@@ -434,8 +434,18 @@ Item {
         forceActiveFocus()
     }
 
+    function clearInput() {
+        input.left = false
+        input.right = false
+        input.up = false
+        input.down = false
+        input.hop = false
+        input.shift = false
+    }
+
     function tick() {
         if (showName || holdRestart) {
+            clearInput()
             syncHud()
             canvas.requestPaint()
             return
@@ -451,8 +461,13 @@ Item {
     }
 
     function handleKey(event, down) {
-        if (showName) {
+        if (showName || holdRestart) {
+            clearInput()
             event.accepted = false
+            return
+        }
+        if (event.isAutoRepeat) {
+            event.accepted = true
             return
         }
         var k = event.key
@@ -483,6 +498,7 @@ Item {
     }
 
     function doRestartNow() {
+        clearInput()
         holdRestart = false
         waitingToAsk = false
         asked = false
@@ -490,6 +506,7 @@ Item {
         if (!pendingBody) publishing = false
         pendingPoints = 0
         Game.restart(state)
+        clearInput()
         saveScores()
         syncHud()
         canvas.requestPaint()
@@ -509,6 +526,7 @@ Item {
         if (typeof state.frozenScore !== "number") state.frozenScore = points
         pendingPoints = state.frozenScore
         showName = true
+        clearInput()
         nameField.text = ""
         nameFocus.restart()
     }

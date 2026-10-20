@@ -387,7 +387,8 @@ function collide(state) {
         }
         for (i = state.bonuses.length - 1; i >= 0; i--) {
             var bonus = state.bonuses[i]
-            var reach = bonus.kind === "big" ? 42 : 22
+            var bonusSize = bonus.kind === "big" ? 92 : 40
+            var reach = (bonus.kind === "big" ? 42 : 22) + bonusSize * 0.1
             if (hits(state.skierX, state.travel, bonus.x, bonus.y, reach)) {
                 collect(state, bonus)
                 state.bonuses.splice(i, 1)
@@ -395,7 +396,7 @@ function collide(state) {
         }
         for (i = 0; i < state.ramps.length; i++) {
             var ramp = state.ramps[i]
-            if (!ramp.spent && hits(state.skierX, state.travel, ramp.x, ramp.y, 38)) {
+            if (!ramp.spent && hits(state.skierX, state.travel, ramp.x, ramp.y, 38 + 72 * 0.1)) {
                 ramp.spent = true
                 launch(state, 0.96)
                 break
