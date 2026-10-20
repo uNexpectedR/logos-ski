@@ -53,10 +53,12 @@ Item {
     property string rlnRegistry: "logos:testnet:fd322d32a46ddf57eece9db8d68e9b722262d1f770760fca63b8cb9e7775b971"
     property string rlnId: "5e269b6a19fce081f5808b13442dcbc3522197638dd38df5a28bc4e55236b977"
     property string downloadCid: ""
+    property bool downloadCallOpen: false
     property string downloadBuf: ""
     property string uploadSession: ""
     property string uploadBody: ""
     property bool uploadBusy: false
+    property int uploadTries: 0
     property string uploadedKey: ""
     property var seenHashes: ({})
     property var cidState: ({})
@@ -64,8 +66,11 @@ Item {
     property var storedIds: ({})
     property var anchorIds: ({})
     property string anchorCid: ""
+    property string newestCid: ""
     property bool anchorFetched: false
     property bool anchorFailed: false
+    property bool historySettled: false
+    property var sessionIds: ({})
 
     Settings {
         id: board
@@ -111,6 +116,13 @@ Item {
         interval: 2500
         repeat: false
         onTriggered: root.uploadBoard()
+    }
+
+    Timer {
+        id: historyTimer
+        interval: 10000
+        repeat: false
+        onTriggered: root.settleHistory()
     }
 
     Timer {
@@ -559,8 +571,14 @@ Item {
         board.player = name
         Game.recordScore(state, name)
         saveScores()
+        var points = pendingPoints
+        if (typeof points !== "number") points = Game.score(state)
         var id = Date.now() + "-" + Math.floor(Math.random() * 1000000)
-        var body = Board.scoreMessage(name, pendingPoints, id)
+        sessionIds[id] = points
+        sharedRows = Board.merge(sharedRows, { name: name, score: points, id: id })
+        scheduleUpload()
+        boardLog("saved " + name + " " + points + " shared " + rowBrief(sharedRows))
+        var body = Board.scoreMessage(name, points, id)
         showName = false
         publishNote = ""
         pendingBody = body
@@ -920,6 +938,7 @@ Item {
         if (status === "Connected" || status === "PartiallyConnected") {
             connected = true
             if (!subscribed) subscribeTopic()
+            if (!historySettled) historyTimer.restart()
             refreshDelivery()
         }
     }
@@ -1047,6 +1066,9 @@ Item {
         if (eventName !== "messageReceived") return
         var hash = asText(field(data, 0))
         var topic = asText(field(data, 1))
+        var source = asText(field(data, 3))
+        boardLog("delivery_module.messageReceived " + (source || "unknown") + " " + hash)
+        if (source === "history" && !historySettled) historyTimer.restart()
         if (topic && topic !== Board.TOPIC) return
         if (hash) {
             if (seenHashes[hash]) return
@@ -1064,14 +1086,14 @@ Item {
             publishing = false
             publishNote = ""
             pendingBody = ""
-            boardLog("delivery_module.score " + parsed.name + " " + parsed.score)
+            boardLog("delivery_module.score " + parsed.name + " " + parsed.score + " shared " + rowBrief(sharedRows))
             scheduleUpload()
             syncHud()
             return
         }
         if (parsed.kind === "board" && parsed.cid) {
             boardLog("delivery_module.boardPointer " + parsed.cid)
-            rememberCid(parsed.cid)
+            rememberCid(parsed.cid, true)
             pumpDownloads()
         }
     }
@@ -1091,10 +1113,9 @@ Item {
             }
             storageState = "up"
             syncHud()
-            loadSavedCids()
             anchorCid = board.cid || ""
-            if (anchorCid) rememberCid(anchorCid)
-            else anchorFetched = true
+            if (!newestCid && anchorCid) newestCid = anchorCid
+            if (!newestCid) anchorFetched = true
             pumpDownloads()
             return
         }
@@ -1120,6 +1141,7 @@ Item {
                 return
             }
             downloadWatch.stop()
+            boardLog("storage_module.document " + cid + " rows " + doc.rows.length + " " + rowBrief(doc.rows))
             absorbBoard(cid, doc.rows)
             pumpDownloads()
             return
@@ -1142,7 +1164,9 @@ Item {
                     return
                 }
                 var nextCid = String(parsed.value)
+                uploadTries = 0
                 board.cid = nextCid
+                newestCid = nextCid
                 cidState[nextCid] = "merged"
                 saveCidList()
                 uploadedKey = JSON.stringify(sharedRows)
@@ -1163,10 +1187,15 @@ Item {
         return parts.join(", ")
     }
 
-    function rememberCid(cid) {
+    function rememberCid(cid, asNewest) {
         if (!cid) return
         var id = String(cid)
-        if (cidState[id]) return
+        if (asNewest) {
+            if (newestCid && id !== newestCid && anchorFailed) anchorFailed = false
+            newestCid = id
+            if (cidState[id] !== "merged") anchorFetched = false
+        }
+        if (cidState[id] === "merged" || cidState[id] === "failed" || cidState[id] === "queued") return
         cidState[id] = "queued"
         cidQueue.push(id)
         saveCidList()
@@ -1185,7 +1214,7 @@ Item {
         try { parsed = JSON.parse(board.cids || "[]") } catch (e) { parsed = [] }
         if (!parsed || parsed.length === undefined) return
         var i
-        for (i = 0; i < parsed.length; i++) rememberCid(String(parsed[i]))
+        for (i = 0; i < parsed.length; i++) rememberCid(String(parsed[i]), false)
     }
 
     function noteStored(rows) {
@@ -1217,13 +1246,34 @@ Item {
         return true
     }
 
+    function settleHistory() {
+        historySettled = true
+        boardLog("history settled " + rowBrief(sharedRows))
+        scheduleUpload()
+    }
+
     function canUpload() {
+        if (!historySettled) return false
         if (storageState !== "up" || anchorFailed || !anchorFetched) return false
-        if (downloadCid || cidQueue.length || uploadBusy) return false
+        if (downloadCid || downloadCallOpen || uploadBusy) return false
         if (!sharedRows || !sharedRows.length) return false
         if (!coversStored(sharedRows)) return false
         if (!needsPublish()) return false
         return true
+    }
+
+    function uploadBlock() {
+        var why = ""
+        if (!historySettled) why = "history"
+        else if (storageState !== "up") why = "storage " + storageState
+        else if (anchorFailed) why = "anchor failed"
+        else if (!anchorFetched) why = "anchor missing"
+        else if (downloadCid || downloadCallOpen) why = "downloading " + downloadCid
+        else if (uploadBusy) why = "busy"
+        else if (!sharedRows || !sharedRows.length) why = "empty"
+        else if (!coversStored(sharedRows)) why = "uncovered"
+        else if (!needsPublish()) why = "published"
+        return why
     }
 
     function needsPublish() {
@@ -1244,7 +1294,7 @@ Item {
         sharedRows = combined
         noteStored(rows)
         if (cid) cidState[cid] = "merged"
-        if (cid && cid === anchorCid) {
+        if (cid && (cid === anchorCid || cid === newestCid)) {
             anchorFetched = true
             var n
             for (n = 0; n < rows.length; n++) anchorIds[rows[n].id] = rows[n].score
@@ -1256,42 +1306,51 @@ Item {
     function failDownload(cid, why) {
         downloadWatch.stop()
         boardLog("storage_module.download failed " + (cid || "") + " " + why)
-        if (cid && cid === anchorCid) anchorFailed = true
+        if (cid && (cid === anchorCid || cid === newestCid)) anchorFailed = true
         if (cid) cidState[cid] = "failed"
-        downloadCid = ""
+        if (downloadCid === cid) downloadCid = ""
         downloadBuf = ""
         syncHud()
-        pumpDownloads()
+        if (!downloadCallOpen) pumpDownloads()
+        else boardLog("upload waiting call")
+        var block = uploadBlock()
+        if (block) boardLog("upload waiting " + block)
     }
 
     function pumpDownloads() {
-        if (storageState !== "up" || downloadCid) return
-        if (!cidQueue.length) {
+        if (storageState !== "up" || downloadCid || downloadCallOpen) return
+        var next = ""
+        if (newestCid && cidState[newestCid] !== "merged" && cidState[newestCid] !== "failed") next = newestCid
+        else if (anchorCid && !anchorFetched && !anchorFailed && cidState[anchorCid] !== "merged" && cidState[anchorCid] !== "failed") next = anchorCid
+        if (!next) {
             scheduleUpload()
             return
         }
-        var next = cidQueue[0]
-        var rest = []
-        var i
-        for (i = 1; i < cidQueue.length; i++) rest.push(cidQueue[i])
-        cidQueue = rest
-        if (cidState[next] === "merged") {
-            pumpDownloads()
-            return
-        }
+        if (cidState[next] !== "queued") rememberCid(next, next === newestCid)
         fetchBoard(next)
     }
 
     function fetchBoard(cid) {
-        if (!cid || storageState !== "up" || downloadCid) return
+        if (!cid || storageState !== "up" || downloadCid || downloadCallOpen) return
         downloadCid = cid
         downloadBuf = ""
-        downloadWatch.restart()
+        downloadCallOpen = true
+        downloadWatch.stop()
         boardLog("storage_module.downloadChunks " + cid)
         callMod("storage_module", "downloadChunks", [cid, false, 65536, false, true], function (payload) {
+            downloadCallOpen = false
+            if (downloadCid !== cid) {
+                pumpDownloads()
+                return
+            }
             var parsed = asResult(payload)
-            if (!parsed.ok) failDownload(cid, parsed.error || "failed")
-        })
+            if (!parsed.ok) {
+                failDownload(cid, parsed.error || "failed")
+                return
+            }
+            downloadWatch.interval = 20000
+            downloadWatch.restart()
+        }, 35000)
     }
 
     function scheduleUpload() {
@@ -1313,6 +1372,10 @@ Item {
             if (!parsed.ok || !parsed.value) {
                 uploadBusy = false
                 boardLog("storage_module.uploadInit " + parsed.error)
+                if (uploadTries < 4) {
+                    uploadTries = uploadTries + 1
+                    uploadTimer.restart()
+                }
                 return
             }
             uploadSession = String(parsed.value)
@@ -1323,8 +1386,12 @@ Item {
                     uploadBusy = false
                     boardLog("storage_module.uploadChunk " + chunk.error)
                     uploadSession = ""
+                    if (uploadTries < 4) {
+                        uploadTries = uploadTries + 1
+                        uploadTimer.restart()
+                    }
                 }
-            })
-        })
+            }, 60000)
+        }, 60000)
     }
 }

@@ -178,6 +178,26 @@ function runBoardTests() {
     if (parsePayload('{"kind":"score","name":"***","score":1,"id":"x"}') !== null) throw new Error("bad name")
     if (b64decode("eyJhIjoxfQ==") !== '{"a":1}') throw new Error("b64")
     if (cleanName("  Ada   Lovelace  ") !== "Ada Lovelace") throw new Error("name")
+    var sameName = merge([{ name: "Ada", score: 12, id: "a1" }], null)
+    sameName = merge(sameName, { name: "Ada", score: 40, id: "a2" })
+    sameName = merge(sameName, { name: "Ada", score: 27, id: "a3" })
+    eq("same name", sameName, [
+        { name: "Ada", score: 40, id: "a2" },
+        { name: "Ada", score: 27, id: "a3" },
+        { name: "Ada", score: 12, id: "a1" }
+    ])
+    var stored = merge([
+        { name: "Ada", score: 12, id: "a1" },
+        { name: "Bea", score: 11, id: "b" },
+        { name: "Cy", score: 9, id: "c" },
+        { name: "Dee", score: 7, id: "d" },
+        { name: "Eve", score: 3, id: "e" }
+    ], { name: "Ada", score: 40, id: "a2" })
+    stored = merge(stored, { name: "Ada", score: 27, id: "a3" })
+    if (stored.length !== 7) throw new Error("stored rows dropped")
+    if (stored[0].name !== "Ada" || stored[0].score !== 40) throw new Error("new high dropped")
+    if (stored[1].name !== "Ada" || stored[1].score !== 27) throw new Error("second row dropped")
+    if (stored[2].score !== 12 || stored[6].score !== 3) throw new Error("older rows dropped")
     console.log("board tests ok")
 }
 

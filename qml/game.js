@@ -457,16 +457,26 @@ function finish(state, by) {
     state.mode = "caught"
     state.caughtBy = by
     state.vx = 0
-    recordScore(state)
 }
 
 function recordScore(state, name) {
-    if (state.recorded) return
-    state.recorded = true
+    var points = score(state)
     var list = []
     var i
     for (i = 0; i < state.top.length; i++) list.push(state.top[i])
-    var points = score(state)
+    if (state.recorded) {
+        if (!name) return
+        for (i = 0; i < list.length; i++) {
+            if (typeof list[i] === "number" && list[i] === points) {
+                list[i] = { name: name, score: points }
+                state.top = list
+                state.scoreDirty = true
+                return
+            }
+        }
+        return
+    }
+    state.recorded = true
     if (name) list.push({ name: name, score: points })
     else list.push(points)
     list.sort(function (a, b) { return entryScore(b) - entryScore(a) })
