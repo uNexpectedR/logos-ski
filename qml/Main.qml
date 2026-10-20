@@ -620,7 +620,8 @@ Item {
 
     function syncHud() {
         distanceLabel = Game.score(state) + " pts"
-        speedLabel = Math.floor(state.speed) + ""
+        var pace = state.speed + (state.boost || 0)
+        speedLabel = Math.floor(pace) + ""
         if (state.mode === "caught") {
             statusLabel = "caught"
             showCaught = true
@@ -628,6 +629,9 @@ Item {
             caughtTitle = "CAUGHT\n" + who + "\n" + Game.score(state) + " pts\nR restart"
         } else if (state.mode === "crash") {
             statusLabel = "wiped out"
+            showCaught = false
+        } else if (state.boostT > 0) {
+            statusLabel = "boost"
             showCaught = false
         } else if (state.air > 0) {
             statusLabel = "air"

@@ -37,7 +37,9 @@ function createState() {
         placed: false,
         evadeT: 0,
         evadeCd: 0,
-        evadeDir: 1
+        evadeDir: 1,
+        boost: 0,
+        boostT: 0
     }
 }
 
@@ -73,7 +75,14 @@ function step(state, dt, input) {
         if (state.air <= 0) launch(state, 0.58)
         input.hop = false
     }
-    state.travel += state.speed * dt
+    if (state.boostT > 0) {
+        state.boostT -= dt
+        if (state.boostT <= 0) {
+            state.boostT = 0
+            state.boost = 0
+        }
+    }
+    state.travel += (state.speed + state.boost) * dt
     state.distance = state.travel / 8
     spawn(state)
     cull(state)
@@ -371,6 +380,8 @@ function collide(state) {
                 state.vx = 0
                 state.air = 0
                 state.airMax = 0
+                state.boost = 0
+                state.boostT = 0
                 return
             }
         }
@@ -405,13 +416,23 @@ function collide(state) {
 }
 
 function collect(state, bonus) {
-    var pts = bonus.kind === "big" ? BIG_PTS : SMALL_PTS
+    var big = bonus.kind === "big"
+    var pts = big ? BIG_PTS : SMALL_PTS
+    var dur = big ? 6.2 : 2.4
     state.bonus += pts
+    state.boost = 260
+    if (dur > state.boostT) state.boostT = dur
     state.floaters.push({
         x: bonus.x,
         y: bonus.y,
         text: "+" + pts,
         life: 1.15
+    })
+    state.floaters.push({
+        x: bonus.x,
+        y: bonus.y - 26,
+        text: "BOOST",
+        life: 1.35
     })
 }
 
@@ -507,34 +528,96 @@ function stampForest(state, x0, x1, y0, y1, cols, rows) {
     }
 }
 
+function placeBonus(state, lane, y, kind) {
+    var tries = 0
+    var x = lane
+    while (tries < 8) {
+        x = lane + Math.random() * 90 - 45
+        if (x < 48) x = 48
+        if (x > state.width - 48) x = state.width - 48
+        if (spotFree(state, x, y, 110)) break
+        y += 28
+        tries++
+    }
+    state.bonuses.push({ x: x, y: y, kind: kind })
+}
+
 function prime(state) {
     var w = state.width
-    var pathW = 230
+    var pathW = pathWidth(state)
     var y = state.travel
-    var c1 = w * 0.46
-    var c2 = w * 0.78
-    if (w < 1000) {
-        c1 = w * 0.5
-        state.gates = [c1]
-        stampForest(state, 36, c1 - pathW / 2 - 12, y + 90, y + 280, 2, 2)
-        stampForest(state, c1 + pathW / 2 + 12, w - 36, y + 120, y + 300, 2, 2)
-    } else {
-        if (c2 - c1 < pathW + 140) c2 = c1 + pathW + 150
+    var count = w >= 1000 ? 2 : 1
+    var lo = 48 + pathW / 2
+    var hi = w - 48 - pathW / 2
+    if (hi < lo) hi = lo
+    var c1
+    var c2
+    if (count === 2) {
+        var minGap = pathW + 140
+        var room = hi - lo - minGap
+        if (room < 10) room = 10
+        c1 = lo + Math.random() * room * 0.55
+        c2 = c1 + minGap + Math.random() * Math.max(10, hi - (c1 + minGap))
+        if (c2 > hi) c2 = hi
+        if (c2 - c1 < minGap) c1 = c2 - minGap
+        if (c1 < lo) c1 = lo
         state.gates = [c1, c2]
-        stampForest(state, 36, c1 - pathW / 2 - 12, y + 80, y + 300, 2, 2)
-        stampForest(state, c1 + pathW / 2 + 12, c2 - pathW / 2 - 12, y + 110, y + 280, 2, 2)
-        stampForest(state, c2 + pathW / 2 + 12, w - 36, y + 90, y + 270, 2, 2)
-    }
-    state.ramps.push({ x: c1, y: y + 250, spent: false })
-    state.bonuses.push({ x: c1 - 20, y: y + 130, kind: "small" })
-    if (state.gates.length > 1) {
-        state.bonuses.push({ x: c2, y: y + 200, kind: "big" })
     } else {
-        state.bonuses.push({ x: c1 + 64, y: y + 310, kind: "big" })
+        c1 = lo + Math.random() * Math.max(10, hi - lo)
+        state.gates = [c1]
     }
-    state.piles.push({ x: 70, y: y + 160, scale: 0.9 })
-    state.piles.push({ x: w - 80, y: y + 220, scale: 0.75 })
-    state.spawnAt = y + 220
+    var spans = forestSpans(state, pathW)
+    var i
+    for (i = 0; i < spans.length; i++) {
+        var span = spans[i]
+        var y0 = y + 36 + Math.random() * 90
+        var depth = 140 + Math.random() * 150
+        var trees = 2 + Math.floor(Math.random() * 3)
+        placeCluster(state, span.x0, span.x1, y0, y0 + depth, trees)
+        if (Math.random() < 0.5) {
+            placeCluster(state, span.x0, span.x1, y0 + depth + 24, y0 + depth + 130, 2)
+        }
+    }
+    var rampLane = state.gates[Math.floor(Math.random() * state.gates.length)]
+    var rampX = rampLane + Math.random() * 50 - 25
+    var rampY = y + 150 + Math.random() * 170
+    if (spotFree(state, rampX, rampY, 64)) {
+        state.ramps.push({ x: rampX, y: rampY, spent: false })
+    } else {
+        state.ramps.push({ x: rampLane, y: rampY + 40, spent: false })
+    }
+    var smallLane = state.gates[Math.floor(Math.random() * state.gates.length)]
+    var bigLane = state.gates[Math.floor(Math.random() * state.gates.length)]
+    var smallY = y + 80 + Math.random() * 90
+    var bigY = y + 190 + Math.random() * 130
+    if (smallLane === bigLane && Math.abs(bigY - smallY) < 80) bigY = smallY + 130
+    placeBonus(state, smallLane, smallY, "small")
+    placeBonus(state, bigLane, bigY, "big")
+    var pileN = 1 + Math.floor(Math.random() * 3)
+    var placedPiles = 0
+    var n
+    var guardP = 0
+    while (placedPiles < pileN && guardP < 24) {
+        guardP++
+        var px = 56 + Math.random() * Math.max(40, w - 112)
+        var py = y + 70 + Math.random() * 260
+        if (!spotFree(state, px, py, 72)) continue
+        state.piles.push({
+            x: px,
+            y: py,
+            scale: 0.7 + Math.random() * 0.55
+        })
+        placedPiles++
+    }
+    if (placedPiles === 0) {
+        var lane = state.gates[0]
+        state.piles.push({
+            x: lane + 70,
+            y: y + 120,
+            scale: 0.85
+        })
+    }
+    state.spawnAt = y + 160 + Math.random() * 90
 }
 
 function copyInto(dst, src) {

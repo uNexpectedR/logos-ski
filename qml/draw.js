@@ -69,6 +69,7 @@ function paint(ctx, state, w, h, mark) {
         drawMark(ctx, marks[i], pal, mark)
     }
     if (!skierDrawn) drawSkier(ctx, state, pal)
+    drawBoost(ctx, state, pal)
     if (state.agent) drawIncoming(ctx, state, state.agent, false, pal)
     if (state.ops) drawIncoming(ctx, state, state.ops, true, pal)
     drawFloaters(ctx, state, pal)
@@ -174,6 +175,18 @@ function drawBonus(ctx, image, x, y, big) {
     ctx.fill()
     ctx.globalAlpha = 1
     ctx.drawImage(image, x - s / 2, y - s / 2, s, s)
+    ctx.restore()
+}
+
+function drawBoost(ctx, state, pal) {
+    if (!state.boostT || state.boostT <= 0 || state.mode === "crash") return
+    ctx.save()
+    ctx.translate(state.skierX, state.skierScreenY - 86)
+    ctx.font = "bold 18px monospace"
+    ctx.fillStyle = pal.ink
+    ctx.fillText("BOOST", -22, 2)
+    ctx.fillStyle = pal.signal
+    ctx.fillText("BOOST", -24, 0)
     ctx.restore()
 }
 
