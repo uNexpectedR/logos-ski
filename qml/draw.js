@@ -266,100 +266,138 @@ function drawSkier(ctx, state, pal) {
     ctx.save()
     ctx.translate(state.skierX, state.skierScreenY)
     ctx.save()
-    ctx.translate(lean * 8, 18)
+    ctx.translate(lean * 8, 48)
     var shrink = 1 - Math.min(0.5, lift / 150)
-    ctx.scale(1.8 * shrink, 0.4 * shrink)
+    ctx.scale(2 * shrink, 0.42 * shrink)
     ctx.fillStyle = pal.ink
     ctx.globalAlpha = 0.16 * shrink
     ctx.beginPath()
-    ctx.arc(0, 0, 11, 0, Math.PI * 2)
+    ctx.arc(0, 0, 12, 0, Math.PI * 2)
     ctx.fill()
     ctx.restore()
     ctx.translate(0, -lift)
     if (state.mode === "crash") ctx.rotate(state.tumble)
     else ctx.rotate(-lean * 0.45)
     ctx.scale(1.2, 1.2)
-    ctx.strokeStyle = pal.ink
-    ctx.fillStyle = pal.ink
     ctx.lineCap = "round"
-    ctx.lineWidth = 3.5
+    ctx.lineJoin = "round"
+
+    // Skis turn a little more than the body. Tips stay at +y, downhill.
+    var skiTurn = state.mode === "crash" ? 0 : -lean * 0.5
+    var cosT = Math.cos(skiTurn)
+    var sinT = Math.sin(skiTurn)
+    var footX = [-14, 14]
+    var footY = 22
+    var bootX = []
+    var bootY = []
+    var i
+    for (i = 0; i < 2; i++) {
+        bootX[i] = footX[i] * cosT - footY * sinT
+        bootY[i] = footX[i] * sinT + footY * cosT
+    }
+
     ctx.save()
-    ctx.rotate(-lean * 0.95)
-    ctx.beginPath()
-    ctx.moveTo(-8, -4)
-    ctx.lineTo(-8, 30)
-    ctx.moveTo(8, -4)
-    ctx.lineTo(8, 30)
-    ctx.stroke()
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(-8, 30)
-    ctx.lineTo(-6, 36)
-    ctx.moveTo(8, 30)
-    ctx.lineTo(10, 36)
-    ctx.stroke()
+    ctx.rotate(skiTurn)
+    for (i = 0; i < 2; i++) {
+        var sx = footX[i]
+        ctx.fillStyle = pal.ink
+        ctx.beginPath()
+        ctx.moveTo(sx - 1.7, 20)
+        ctx.lineTo(sx - 2.4, 46)
+        ctx.quadraticCurveTo(sx, 54, sx + 2.4, 46)
+        ctx.lineTo(sx + 1.7, 20)
+        ctx.quadraticCurveTo(sx, 16, sx - 1.7, 20)
+        ctx.fill()
+        ctx.fillStyle = pal.steel
+        ctx.fillRect(sx - 4.2, 20.2, 8.4, 2.6)
+        ctx.fillStyle = pal.boot
+        ctx.strokeStyle = pal.steel
+        ctx.lineWidth = 1.2
+        ctx.beginPath()
+        ctx.moveTo(sx - 5, 16)
+        ctx.lineTo(sx + 5, 16)
+        ctx.lineTo(sx + 4.2, 23.5)
+        ctx.lineTo(sx - 4.2, 23.5)
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+    }
     ctx.restore()
-    ctx.lineWidth = 3
+
+    var hipX = [-7, 7]
+    var hipY = -16
+    ctx.strokeStyle = pal.ink
+    ctx.lineWidth = 4.5
     ctx.beginPath()
-    ctx.moveTo(-5, -4)
-    ctx.lineTo(-12, 8)
-    ctx.moveTo(5, -4)
-    ctx.lineTo(12, 10)
+    for (i = 0; i < 2; i++) {
+        var hx = hipX[i]
+        var bx = bootX[i]
+        var by = bootY[i] - 4
+        var bend = hx < 0 ? -2.5 : 2.5
+        var kx = hx + (bx - hx) * 0.5 + bend
+        var ky = hipY + (by - hipY) * 0.55
+        ctx.moveTo(hx, hipY)
+        ctx.lineTo(kx, ky)
+        ctx.lineTo(bx, by)
+    }
     ctx.stroke()
+
     ctx.fillStyle = pal.signal
     ctx.strokeStyle = pal.ink
     ctx.lineWidth = 1.6
     ctx.beginPath()
-    ctx.moveTo(0, -28)
-    ctx.lineTo(11, -20)
-    ctx.lineTo(8, -2)
-    ctx.lineTo(-8, -2)
-    ctx.lineTo(-11, -20)
+    ctx.moveTo(0, -40)
+    ctx.lineTo(13, -30)
+    ctx.lineTo(9, -16)
+    ctx.lineTo(-9, -16)
+    ctx.lineTo(-13, -30)
     ctx.closePath()
     ctx.fill()
     ctx.stroke()
-    var arm = lean * 10
-    var handL = -18 - arm
-    var handR = 18 - arm
-    var handY = up ? -20 : -8
+
+    var arm = lean * 8
+    var handL = -20 - arm
+    var handR = 20 - arm
+    var handY = up ? -26 : -16
     ctx.strokeStyle = pal.ink
-    ctx.lineWidth = 2.6
+    ctx.lineWidth = 3
     ctx.beginPath()
-    ctx.moveTo(-9, -18)
+    ctx.moveTo(-11, -28)
     ctx.lineTo(handL, handY)
-    ctx.moveTo(9, -18)
+    ctx.moveTo(11, -28)
     ctx.lineTo(handR, handY)
     ctx.stroke()
-    var poleDrop = up ? -16 : 16
+    var poleDrop = up ? -20 : 22
     ctx.strokeStyle = pal.steel
     ctx.lineWidth = 2
     ctx.beginPath()
     ctx.moveTo(handL, handY)
-    ctx.lineTo(handL - 6, poleDrop)
+    ctx.lineTo(handL - 5, poleDrop)
     ctx.moveTo(handR, handY)
     ctx.lineTo(handR + 4, poleDrop)
     ctx.stroke()
     ctx.fillStyle = pal.ink
     ctx.beginPath()
-    ctx.arc(handL - 6, poleDrop, 2.3, 0, Math.PI * 2)
-    ctx.arc(handR + 4, poleDrop, 2.3, 0, Math.PI * 2)
+    ctx.arc(handL - 5, poleDrop, 2.2, 0, Math.PI * 2)
+    ctx.arc(handR + 4, poleDrop, 2.2, 0, Math.PI * 2)
     ctx.fill()
+
     ctx.fillStyle = pal.skin
     ctx.beginPath()
-    ctx.arc(lean * 2, -36, 7.5, 0, Math.PI * 2)
+    ctx.arc(lean * 1.5, -48, 7.2, 0, Math.PI * 2)
     ctx.fill()
     ctx.strokeStyle = pal.ink
     ctx.lineWidth = 1.4
     ctx.stroke()
     ctx.fillStyle = pal.ink
-    ctx.fillRect(-10, -38, 20, 4)
+    ctx.fillRect(-10, -50, 20, 4)
     ctx.beginPath()
-    ctx.moveTo(-7, -38)
-    ctx.quadraticCurveTo(lean * 3, -54, 7, -38)
+    ctx.moveTo(-7, -50)
+    ctx.quadraticCurveTo(lean * 3, -66, 7, -50)
     ctx.fill()
     ctx.fillStyle = pal.signal
     ctx.beginPath()
-    ctx.arc(lean * 2, -50, 3.2, 0, Math.PI * 2)
+    ctx.arc(lean * 2, -62, 3.1, 0, Math.PI * 2)
     ctx.fill()
     ctx.restore()
 }
