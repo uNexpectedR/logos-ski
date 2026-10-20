@@ -10,7 +10,7 @@ A shared board lists a name and a score when Logos messaging and storage are ava
 - Up — slow down
 - Down — speed up
 - Space — hop
-- Shift — a short sideways evade when a chaser is after you, then a cooldown
+- Shift+Left / Shift+Right — a short dash that way
 - R — restart and keep the local top ten
 - Click the slope if the keys do not respond
 

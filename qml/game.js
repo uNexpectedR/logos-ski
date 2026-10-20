@@ -42,6 +42,7 @@ function createState() {
 }
 
 function score(state) {
+    if (typeof state.frozenScore === "number") return state.frozenScore
     var meters = Math.floor(state.distance)
     if (meters < 0) meters = 0
     return meters + state.bonus
@@ -90,35 +91,15 @@ function entryScore(item) {
     return 0
 }
 
-function chaserAfter(state) {
-    return !!(state.agent || state.ops)
-}
-
-function evadeSide(state) {
-    var threat = state.agent
-    if (state.ops && state.agent) {
-        var agentGap = state.travel - state.agent.y
-        var opsGap = state.travel - state.ops.y
-        threat = opsGap < agentGap ? state.ops : state.agent
-    } else if (state.ops) {
-        threat = state.ops
-    }
-    if (!threat) return state.skierX < state.width * 0.5 ? 1 : -1
-    var dx = state.skierX - threat.x
-    if (dx > 12) return 1
-    if (dx < -12) return -1
-    return state.skierX < state.width * 0.5 ? 1 : -1
-}
-
 function evade(state, dt, input) {
     if (state.evadeCd > 0) state.evadeCd -= dt
-    if (input.evade) {
-        input.evade = false
-        if (state.evadeCd <= 0 && state.evadeT <= 0 && chaserAfter(state)) {
-            state.evadeDir = evadeSide(state)
-            state.evadeT = 0.2
-            state.evadeCd = 2.2
-        }
+    var dash = 0
+    if (input.shift && input.left) dash = -1
+    else if (input.shift && input.right) dash = 1
+    if (dash && state.evadeCd <= 0 && state.evadeT <= 0 && state.mode === "ski") {
+        state.evadeDir = dash
+        state.evadeT = 0.16
+        state.evadeCd = 0.45
     }
     if (state.evadeT > 0) {
         state.skierX += state.evadeDir * 980 * dt
@@ -222,7 +203,7 @@ function placeCluster(state, x0, x1, y0, y1, count) {
         guard++
         var x = x0 + Math.random() * (x1 - x0)
         var y = y0 + Math.random() * (y1 - y0)
-        if (nearList(state.obstacles, x, y, 4)) continue
+        if (nearList(state.obstacles, x, y, 34)) continue
         if (nearList(state.bonuses, x, y, 96)) continue
         if (nearList(state.ramps, x, y, 84)) continue
         state.obstacles.push({
@@ -241,9 +222,10 @@ function layBand(state, y, depth) {
     var i
     for (i = 0; i < spans.length; i++) {
         var span = spans[i]
-        var count = Math.floor((span.x1 - span.x0) / 46)
-        if (count < 3) count = 3
-        if (count > 8) count = 8
+        if (Math.random() < 0.4) continue
+        var count = Math.floor((span.x1 - span.x0) / 110)
+        if (count < 2) count = 2
+        if (count > 4) count = 4
         placeCluster(state, span.x0, span.x1, y, y + depth, count)
     }
     if (Math.random() < 0.6) {
@@ -276,7 +258,7 @@ function layBand(state, y, depth) {
 }
 
 function spawn(state) {
-    var gap = state.fast ? 280 : 420
+    var gap = state.fast ? 460 : 720
     if (state.travel - state.spawnAt < gap) return
     state.spawnAt = state.travel
     layBand(state, state.travel + state.height * 0.92, 210)
@@ -534,14 +516,14 @@ function prime(state) {
     if (w < 1000) {
         c1 = w * 0.5
         state.gates = [c1]
-        stampForest(state, 36, c1 - pathW / 2 - 12, y + 70, y + 360, 4, 3)
-        stampForest(state, c1 + pathW / 2 + 12, w - 36, y + 90, y + 380, 4, 3)
+        stampForest(state, 36, c1 - pathW / 2 - 12, y + 90, y + 280, 2, 2)
+        stampForest(state, c1 + pathW / 2 + 12, w - 36, y + 120, y + 300, 2, 2)
     } else {
         if (c2 - c1 < pathW + 140) c2 = c1 + pathW + 150
         state.gates = [c1, c2]
-        stampForest(state, 36, c1 - pathW / 2 - 12, y + 50, y + 390, 5, 3)
-        stampForest(state, c1 + pathW / 2 + 12, c2 - pathW / 2 - 12, y + 80, y + 360, 3, 3)
-        stampForest(state, c2 + pathW / 2 + 12, w - 36, y + 60, y + 340, 3, 3)
+        stampForest(state, 36, c1 - pathW / 2 - 12, y + 80, y + 300, 2, 2)
+        stampForest(state, c1 + pathW / 2 + 12, c2 - pathW / 2 - 12, y + 110, y + 280, 2, 2)
+        stampForest(state, c2 + pathW / 2 + 12, w - 36, y + 90, y + 270, 2, 2)
     }
     state.ramps.push({ x: c1, y: y + 250, spent: false })
     state.bonuses.push({ x: c2, y: y + 190, kind: "small" })

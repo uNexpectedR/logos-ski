@@ -277,14 +277,14 @@ function drawSkier(ctx, state, pal) {
     ctx.restore()
     ctx.translate(0, -lift)
     if (state.mode === "crash") ctx.rotate(state.tumble)
-    else ctx.rotate(lean * 0.5)
+    else ctx.rotate(-lean * 0.45)
     ctx.scale(1.2, 1.2)
     ctx.strokeStyle = pal.ink
     ctx.fillStyle = pal.ink
     ctx.lineCap = "round"
     ctx.lineWidth = 3.5
     ctx.save()
-    ctx.rotate(lean * 0.85)
+    ctx.rotate(-lean * 0.95)
     ctx.beginPath()
     ctx.moveTo(-8, -4)
     ctx.lineTo(-8, 30)

@@ -14,7 +14,7 @@ Item {
     activeFocusOnTab: true
 
     property var pal: Palette.tokens()
-    property var input: ({ left: false, right: false, up: false, down: false, hop: false, evade: false })
+    property var input: ({ left: false, right: false, up: false, down: false, hop: false, shift: false })
     property var state: Game.createState()
     property bool booted: false
     property bool keysReady: false
@@ -268,7 +268,7 @@ Item {
         Text {
             anchors.centerIn: parent
             text: root.keysReady
-                  ? "left / right steer    up slow    down fast    space jump    shift evade    R restart"
+                  ? "left / right steer    up slow    down fast    space jump    shift+left/right dash    R restart"
                   : "click the slope to ski"
             color: root.pal.paper
             font.pixelSize: 13
@@ -461,7 +461,7 @@ Item {
         else if (k === Qt.Key_Up) input.up = down
         else if (k === Qt.Key_Down) input.down = down
         else if (down && k === Qt.Key_Space) input.hop = true
-        else if (down && k === Qt.Key_Shift) input.evade = true
+        else if (k === Qt.Key_Shift) input.shift = down
         else if (down && k === Qt.Key_R) doRestart()
         else if (down && k === Qt.Key_T) Game.armFast(state)
         event.accepted = true
@@ -488,6 +488,7 @@ Item {
         asked = false
         showName = false
         if (!pendingBody) publishing = false
+        pendingPoints = 0
         Game.restart(state)
         saveScores()
         syncHud()
@@ -498,15 +499,15 @@ Item {
     function maybeAsk() {
         if (asked || showName) return
         if (state.mode !== "caught" && !waitingToAsk) return
-        var points = pendingPoints > 0 ? pendingPoints : Game.score(state)
+        var points = Game.score(state)
         if (!Board.qualifies(state.top, points) && !Board.qualifies(sharedRows, points)) {
             if (holdRestart) doRestartNow()
             return
         }
         asked = true
         waitingToAsk = false
-        pendingPoints = points
-        state.vx = 0
+        if (typeof state.frozenScore !== "number") state.frozenScore = points
+        pendingPoints = state.frozenScore
         showName = true
         nameField.text = ""
         nameFocus.restart()
