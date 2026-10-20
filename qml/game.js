@@ -235,15 +235,15 @@ function layBand(state, y, depth) {
             state.ramps.push({ x: gate, y: ry, spent: false })
         }
     }
-    if (Math.random() < 0.1) {
+    if (Math.random() < 0.45) {
         var lane = state.gates[Math.floor(Math.random() * state.gates.length)]
-        var lx = lane + (Math.random() < 0.5 ? -28 : 28)
-        var ly = y + depth * 0.82
-        if (spotFree(state, lx, ly, 110)) {
+        var lx = lane + (Math.random() < 0.5 ? -36 : 36)
+        var ly = y + depth * 0.72
+        if (spotFree(state, lx, ly, 120)) {
             state.bonuses.push({
                 x: lx,
                 y: ly,
-                kind: Math.random() < 0.28 ? "big" : "small"
+                kind: Math.random() < 0.3 ? "big" : "small"
             })
         }
     }
@@ -526,7 +526,12 @@ function prime(state) {
         stampForest(state, c2 + pathW / 2 + 12, w - 36, y + 90, y + 270, 2, 2)
     }
     state.ramps.push({ x: c1, y: y + 250, spent: false })
-    state.bonuses.push({ x: c2, y: y + 190, kind: "small" })
+    state.bonuses.push({ x: c1 - 20, y: y + 130, kind: "small" })
+    if (state.gates.length > 1) {
+        state.bonuses.push({ x: c2, y: y + 200, kind: "big" })
+    } else {
+        state.bonuses.push({ x: c1 + 64, y: y + 310, kind: "big" })
+    }
     state.piles.push({ x: 70, y: y + 160, scale: 0.9 })
     state.piles.push({ x: w - 80, y: y + 220, scale: 0.75 })
     state.spawnAt = y + 220

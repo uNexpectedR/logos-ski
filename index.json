@@ -1,11 +1,69 @@
 {
   "schemaVersion": 2,
   "repositoryName": "logos-ski",
-  "generatedAt": "2026-10-20T12:01:44Z",
+  "generatedAt": "2026-10-20T12:27:17Z",
   "packages": [
     {
       "name": "logos_ski",
       "versions": [
+        {
+          "releasedAt": "2026-10-20T12:27:17Z",
+          "publisherRef": "logos_ski-v1.10.0",
+          "url": "https://github.com/uNexpectedR/logos-ski/releases/download/logos_ski-v1.10.0/logos_ski-1.10.0.lgx",
+          "size": 396670,
+          "sha256": "bf6efaa690eddcd2c03d4c956c1a2c0dee77a0c6cdcbf58229da7915d5dc1db2",
+          "rootHash": "f931c4c359b8d9a44fc31eb8feadc4cbb0405da25b2abbadcab7c312b2f57245",
+          "manifest": {
+            "author": "",
+            "category": "game",
+            "dependencies": [
+              "delivery_module",
+              "storage_module",
+              "liblogos_rln_module"
+            ],
+            "description": "Downhill ski run.",
+            "display_name": "Logos Ski",
+            "hashes": {
+              "assets": "00f0c242712d2df0a1ee3582041662f62d2dd1065ae79501076fc604cbea4c8f",
+              "root": "f931c4c359b8d9a44fc31eb8feadc4cbb0405da25b2abbadcab7c312b2f57245",
+              "variants": "cb5a046c2e0ea43ccf203b1ba8c1f3ad973d4de84067d19f2d2001126815d79c",
+              "variants/darwin-amd64": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/darwin-amd64-dev": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/darwin-arm64": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/darwin-arm64-dev": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/darwin-x86_64": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/darwin-x86_64-dev": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/linux-amd64": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/linux-amd64-dev": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/linux-arm64": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/linux-arm64-dev": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/linux-x86_64": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/linux-x86_64-dev": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/windows-amd64": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/windows-amd64-dev": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/windows-x86_64": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37",
+              "variants/windows-x86_64-dev": "5050a0ca651c0455accf477b650341eab9b1ff21a704b3d85269950e9d7ecb37"
+            },
+            "icon": "assets/icon.png",
+            "main": {},
+            "manifestVersion": "0.6.0",
+            "name": "logos_ski",
+            "type": "ui_qml",
+            "version": "1.10.0",
+            "view": "qml/Main.qml"
+          },
+          "signature": {
+            "algorithm": "ed25519",
+            "did": "did:jwk:eyJjcnYiOiJFZDI1NTE5Iiwia3R5IjoiT0tQIiwieCI6InpzaDNyUnhZUVZnRldmdlZyMVdTeWN6cmlZOXBERlZOOWNraFlNSHUxbjgifQ",
+            "linkedDids": [],
+            "signature": "jJG+PnEEbuoS++R21Ny8pNLJ37rLCjni+wRkF/GwTQKVwB9oRpNjgbCM9MMzEN+zkq41FzN69TkYBV3tbCIgCg==",
+            "signer": {
+              "name": "Logos Ski",
+              "url": "https://github.com/uNexpectedR/logos-ski"
+            },
+            "version": 1
+          }
+        },
         {
           "releasedAt": "2026-10-20T12:01:44Z",
           "publisherRef": "logos_ski-v1.9.0",
