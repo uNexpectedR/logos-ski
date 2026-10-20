@@ -1,7 +1,7 @@
 {
   "name": "logos_ski",
   "display_name": "Logos Ski",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "type": "ui_qml",
   "category": "game",
   "description": "Downhill ski run.",

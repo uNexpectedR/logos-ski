@@ -70,6 +70,17 @@ Item {
     property bool anchorFetched: false
     property bool anchorFailed: false
     property bool historySettled: false
+    property bool storePulled: false
+    property int storePeerIndex: 0
+    property string storeBoard: ""
+    property var storePeers: [
+        "/dns4/delivery-01.do-ams3.logos.dev.status.im/tcp/30303/p2p/16Uiu2HAmTUbnxLGT9JvV6mu9oPyDjqHK4Phs1VDJNUgESgNSkuby",
+        "/dns4/delivery-02.do-ams3.logos.dev.status.im/tcp/30303/p2p/16Uiu2HAmMK7PYygBtKUQ8EHp7EfaD3bCEsJrkFooK8RQ2PVpJprH",
+        "/dns4/delivery-01.gc-us-central1-a.logos.dev.status.im/tcp/30303/p2p/16Uiu2HAm4S1JYkuzDKLKQvwgAhZKs9otxXqt8SCGtB4hoJP1S397",
+        "/dns4/delivery-02.gc-us-central1-a.logos.dev.status.im/tcp/30303/p2p/16Uiu2HAm8Y9kgBNtjxvCnf1X6gnZJW5EGE4UwwCL3CCm55TwqBiH",
+        "/dns4/delivery-01.ac-cn-hongkong-c.logos.dev.status.im/tcp/30303/p2p/16Uiu2HAm8YokiNun9BkeA1ZRmhLbtNUvcwRr64F69tYj9fkGyuEP",
+        "/dns4/delivery-02.ac-cn-hongkong-c.logos.dev.status.im/tcp/30303/p2p/16Uiu2HAkvwhGHKNry6LACrB8TmEFoCJKEX29XR5dDUzk3UT3UNSE"
+    ]
     property var sessionIds: ({})
 
     Settings {
@@ -251,7 +262,7 @@ Item {
             anchors.right: parent.right
             anchors.rightMargin: 18
             anchors.verticalCenter: parent.verticalCenter
-            text: root.speedLabel + "   " + root.statusLabel
+            text: root.distanceLabel
             color: root.pal.steel
             font.pixelSize: 14
             font.family: "monospace"
@@ -678,8 +689,7 @@ Item {
         if (state.mode === "caught") {
             statusLabel = "caught"
             showCaught = true
-            var who = state.caughtBy === "ops" ? "Special Ops" : "the government"
-            caughtTitle = "CAUGHT\n" + who + "\n" + Game.score(state) + " pts\nR restart"
+            caughtTitle = "CAUGHT\n" + Game.score(state) + " pts\nR restart"
         } else if (state.mode === "crash") {
             statusLabel = "wiped out"
             showCaught = false
@@ -689,11 +699,8 @@ Item {
         } else if (state.air > 0) {
             statusLabel = "air"
             showCaught = false
-        } else if (state.ops) {
-            statusLabel = "special ops"
-            showCaught = false
-        } else if (state.agent) {
-            statusLabel = "government"
+        } else if (state.ops || state.agent) {
+            statusLabel = ""
             showCaught = false
         } else {
             statusLabel = "skiing"
@@ -939,6 +946,7 @@ Item {
             connected = true
             if (!subscribed) subscribeTopic()
             if (!historySettled) historyTimer.restart()
+            pullStore()
             refreshDelivery()
         }
     }
@@ -1092,9 +1100,11 @@ Item {
             return
         }
         if (parsed.kind === "board" && parsed.cid) {
-            boardLog("delivery_module.boardPointer " + parsed.cid)
-            rememberCid(parsed.cid, true)
-            pumpDownloads()
+            boardLog("delivery_module.boardPointer " + parsed.cid + " " + (source || ""))
+            if (source === "live" || !storeBoard) {
+                rememberCid(parsed.cid, true)
+                pumpDownloads()
+            }
         }
     }
 
@@ -1252,7 +1262,93 @@ Item {
         scheduleUpload()
     }
 
+    function payloadText(message) {
+        if (!message) return ""
+        var payload = message.payload
+        if (typeof payload === "string") {
+            var decoded = Board.b64decode(payload)
+            if (decoded && decoded.charAt(0) === "{") return decoded
+            if (payload.charAt(0) === "{") return payload
+            return decoded || payload
+        }
+        if (payload && payload.length !== undefined && typeof payload !== "string") {
+            var out = ""
+            var i
+            for (i = 0; i < payload.length; i++) out += String.fromCharCode(payload[i] & 255)
+            return out
+        }
+        return ""
+    }
+
+    function ingestStore(messages) {
+        var i
+        var latest = ""
+        var latestAt = -1
+        for (i = 0; i < messages.length; i++) {
+            var row = messages[i]
+            var message = row && row.message ? row.message : row
+            var text = payloadText(message)
+            var parsed = Board.parsePayload(text)
+            if (!parsed) parsed = Board.parsePayload(Board.b64decode(text))
+            if (!parsed) continue
+            if (parsed.kind === "score") {
+                sharedRows = Board.merge(sharedRows, parsed)
+            } else if (parsed.kind === "board" && parsed.cid) {
+                var at = -1
+                if (message && typeof message.timestamp === "number") at = message.timestamp
+                else if (message && message.timestamp) at = Number(message.timestamp)
+                if (at !== at) at = -1
+                if (!latest || at > latestAt) {
+                    latestAt = at
+                    latest = parsed.cid
+                }
+            }
+        }
+        if (latest) {
+            storeBoard = latest
+            boardLog("delivery_module.latestBoard " + latest)
+            rememberCid(latest, true)
+        } else if (messages.length) {
+            var sample = payloadText(messages[0].message || messages[0])
+            boardLog("delivery_module.storeSample " + String(sample).substring(0, 180))
+        }
+        boardLog("delivery_module.storeRows " + rowBrief(sharedRows))
+        syncHud()
+        pumpDownloads()
+    }
+
+    function pullStore() {
+        if (storePulled || !deliveryStarted) return
+        if (storePeerIndex >= storePeers.length) {
+            storePulled = true
+            boardLog("delivery_module.storeQuery exhausted")
+            scheduleUpload()
+            return
+        }
+        var peer = storePeers[storePeerIndex]
+        var query = "{\"requestId\":\"ski-board-" + storePeerIndex + "\",\"includeData\":true,\"paginationForward\":false,\"contentTopics\":[\"" + Board.TOPIC + "\"],\"paginationLimit\":100}"
+        boardLog("delivery_module.storeQuery " + storePeerIndex)
+        callMod("delivery_module", "storeQuery", [query, peer, 15000], function (payload) {
+            var parsed = asResult(payload)
+            var page = parsed.value
+            if (typeof page === "string") {
+                try { page = JSON.parse(page) } catch (e1) { page = null }
+            }
+            var messages = page && page.messages ? page.messages : null
+            var code = page && page.statusCode ? page.statusCode : 0
+            if (!parsed.ok || code && code !== 200 || !messages || !messages.length) {
+                boardLog("delivery_module.storeQuery failed " + storePeerIndex + " " + (parsed.error || (page && page.statusDesc) || "empty"))
+                storePeerIndex = storePeerIndex + 1
+                pullStore()
+                return
+            }
+            storePulled = true
+            ingestStore(messages)
+        }, 20000)
+    }
+
     function canUpload() {
+        if (!storePulled) return false
         if (!historySettled) return false
         if (storageState !== "up" || anchorFailed || !anchorFetched) return false
         if (downloadCid || downloadCallOpen || uploadBusy) return false
@@ -1264,7 +1360,8 @@ Item {
 
     function uploadBlock() {
         var why = ""
-        if (!historySettled) why = "history"
+        if (!storePulled) why = "store"
+        else if (!historySettled) why = "history"
         else if (storageState !== "up") why = "storage " + storageState
         else if (anchorFailed) why = "anchor failed"
         else if (!anchorFetched) why = "anchor missing"
