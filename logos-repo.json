@@ -9,6 +9,10 @@
     {
       "did": "did:jwk:eyJjcnYiOiJFZDI1NTE5Iiwia3R5IjoiT0tQIiwieCI6InpzaDNyUnhZUVZnRldmdlZyMVdTeWN6cmlZOXBERlZOOWNraFlNSHUxbjgifQ",
       "name": "Logos Ski"
+    },
+    {
+      "did": "did:jwk:eyJjcnYiOiJFZDI1NTE5Iiwia3R5IjoiT0tQIiwieCI6IkQyMGlrNk44XzZKbnZvazc2d0VZc25SU3JpckYtSmR1OFl1WjlEM0JYM0UifQ",
+      "name": "Logos Ski"
     }
   ]
 }

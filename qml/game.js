@@ -30,9 +30,6 @@ function createState() {
         agentAt: 450,
         specialAt: 1400,
         fast: false,
-        top: [],
-        scoreDirty: false,
-        recorded: false,
         caughtBy: "",
         placed: false,
         evadeT: 0,
@@ -92,12 +89,6 @@ function step(state, dt, input) {
         if (state.air < 0) state.air = 0
     }
     collide(state)
-}
-
-function entryScore(item) {
-    if (typeof item === "number") return item
-    if (item && typeof item.score === "number") return item.score
-    return 0
 }
 
 function evade(state, dt, input) {
@@ -459,41 +450,12 @@ function finish(state, by) {
     state.vx = 0
 }
 
-function recordScore(state, name) {
-    var points = score(state)
-    var list = []
-    var i
-    for (i = 0; i < state.top.length; i++) list.push(state.top[i])
-    if (state.recorded) {
-        if (!name) return
-        for (i = 0; i < list.length; i++) {
-            if (typeof list[i] === "number" && list[i] === points) {
-                list[i] = { name: name, score: points }
-                state.top = list
-                state.scoreDirty = true
-                return
-            }
-        }
-        return
-    }
-    state.recorded = true
-    if (name) list.push({ name: name, score: points })
-    else list.push(points)
-    list.sort(function (a, b) { return entryScore(b) - entryScore(a) })
-    if (list.length > 10) list.length = 10
-    state.top = list
-    state.scoreDirty = true
-}
-
 function restart(state) {
-    if (!state.recorded && score(state) > 0) recordScore(state)
-    var keptTop = state.top
     var w = state.width
     var h = state.height
     var fast = state.fast
     var screenY = state.skierScreenY
     var next = createState()
-    next.top = keptTop
     next.width = w
     next.height = h
     next.skierScreenY = screenY

@@ -22,7 +22,7 @@ Item {
     property string distanceLabel: "0 m"
     property string speedLabel: "0"
     property string statusLabel: "skiing"
-    property string topLabel: "SHARED\n—\n\nTOP TEN\n—"
+    property string topLabel: "LEADERBOARD\n—"
     property bool showCaught: false
     property string caughtTitle: ""
 
@@ -86,7 +86,6 @@ Item {
     Settings {
         id: board
         category: "logos.ski"
-        property string top: "[]"
         property string cid: ""
         property string cids: "[]"
         property string player: ""
@@ -464,7 +463,6 @@ Item {
         state.skierScreenY = height * 0.34
         state.skierX = width * 0.5
         state.placed = true
-        loadScores()
         Game.prime(state)
         booted = true
         keysReady = true
@@ -494,7 +492,6 @@ Item {
         state.height = height
         state.skierScreenY = height * 0.34
         Game.step(state, 0.016, input)
-        if (state.scoreDirty) saveScores()
         frame = frame + 1
         syncHud()
         canvas.requestPaint()
@@ -525,8 +522,7 @@ Item {
     function doRestart() {
         if (showName) return
         var points = Game.score(state)
-        var wantName = !asked && points > 0 &&
-                (Board.qualifies(state.top, points) || Board.qualifies(sharedRows, points))
+        var wantName = !asked && points > 0 && Board.qualifies(sharedRows, points)
         if (wantName) {
             pendingPoints = points
             holdRestart = true
@@ -547,7 +543,6 @@ Item {
         pendingPoints = 0
         Game.restart(state)
         clearInput()
-        saveScores()
         syncHud()
         canvas.requestPaint()
         forceActiveFocus()
@@ -557,7 +552,7 @@ Item {
         if (asked || showName) return
         if (state.mode !== "caught" && !waitingToAsk) return
         var points = Game.score(state)
-        if (!Board.qualifies(state.top, points) && !Board.qualifies(sharedRows, points)) {
+        if (!Board.qualifies(sharedRows, points)) {
             if (holdRestart) doRestartNow()
             return
         }
@@ -579,22 +574,31 @@ Item {
     function submitName() {
         var name = Board.cleanName(nameField.text)
         if (!name) return
+        var canSend = subscribed || deliveryState !== "down"
+        var canStore = storageState === "up"
+        if (!canSend && !canStore) {
+            showName = false
+            publishing = false
+            pendingBody = ""
+            publishNote = "score was not published"
+            syncHud()
+            finishAsk()
+            return
+        }
         board.player = name
-        Game.recordScore(state, name)
-        saveScores()
         var points = pendingPoints
         if (typeof points !== "number") points = Game.score(state)
         var id = Date.now() + "-" + Math.floor(Math.random() * 1000000)
         sessionIds[id] = points
         sharedRows = Board.merge(sharedRows, { name: name, score: points, id: id })
         scheduleUpload()
-        boardLog("saved " + name + " " + points + " shared " + rowBrief(sharedRows))
+        boardLog("saved " + name + " " + points + " board " + rowBrief(sharedRows))
         var body = Board.scoreMessage(name, points, id)
         showName = false
         publishNote = ""
         pendingBody = body
         sendTries = 0
-        if (subscribed || deliveryState !== "down") {
+        if (canSend) {
             publishing = true
             sendPending()
         } else {
@@ -644,8 +648,6 @@ Item {
     }
 
     function skipName() {
-        if (!state.recorded) Game.recordScore(state)
-        saveScores()
         showName = false
         publishing = false
         pendingBody = ""
@@ -655,31 +657,6 @@ Item {
     function finishAsk() {
         if (holdRestart || state.mode === "caught") doRestartNow()
         else syncHud()
-    }
-
-    function loadScores() {
-        try {
-            var parsed = JSON.parse(board.top || "[]")
-            if (parsed && parsed.length !== undefined) state.top = parsed
-        } catch (e) {
-            state.top = []
-        }
-    }
-
-    function saveScores() {
-        try {
-            board.top = JSON.stringify(state.top)
-        } catch (e) {
-        }
-        state.scoreDirty = false
-    }
-
-    function localLine(entry, index) {
-        var n = index + 1
-        if (typeof entry === "number") return n + "  " + entry
-        if (entry && entry.name) return n + "  " + entry.name + "  " + entry.score
-        if (entry && typeof entry.score === "number") return n + "  " + entry.score
-        return n + "  " + entry
     }
 
     function syncHud() {
@@ -706,12 +683,12 @@ Item {
             statusLabel = "skiing"
             showCaught = false
         }
-        var lines = ["SHARED"]
+        var lines = ["LEADERBOARD"]
         var remote = sharedRows || []
         if (deliveryState === "down" && storageState !== "up" && !remote.length) {
-            lines.push("shared board unavailable")
+            lines.push("leaderboard unavailable")
         } else if (deliveryState === "down" && !remote.length) {
-            lines.push("shared board unavailable")
+            lines.push("leaderboard unavailable")
         } else if (remote.length) {
             var shown = Board.lines(remote)
             var n
@@ -721,17 +698,9 @@ Item {
         } else if (publishNote) {
             lines.push(publishNote)
         } else if (deliveryState === "down") {
-            lines.push("shared board unavailable")
+            lines.push("leaderboard unavailable")
         } else {
             lines.push("—")
-        }
-        lines.push("")
-        lines.push("TOP TEN")
-        var list = state.top || []
-        if (!list.length) lines.push("—")
-        var i
-        for (i = 0; i < list.length && i < 10; i++) {
-            lines.push(localLine(list[i], i))
         }
         topLabel = lines.join("\n")
         if (state.mode === "caught" || waitingToAsk) maybeAsk()
